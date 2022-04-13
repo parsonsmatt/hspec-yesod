@@ -108,7 +108,7 @@ yesod-test provides a handful of assertion functions that are already lifted, su
 
 -}
 
-module Yesod.Hspec
+module Test.Hspec.Yesod
     ( -- * Declaring and running your test suite
       yesodSpec
     , YesodSpec

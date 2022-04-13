@@ -1,3 +1,13 @@
+# `hspec-yesod`
+
+This package is forked from `yesod-test` to support `hspec` idioms a bit better.
+The internals have been changed dramatically, but the overall interface should work almost entirely the same.
+
+Once I've finished this up and integrated it into my work application, I will write up a guide for migrating.
+Ideally, this will be upstreamed into `yesod-test`, so there's a single testing library for `yesod`, but the breaking changes may be too much.
+
+The original README follows.
+
 # yesod-test
 
 Pragmatic integration tests for haskell web applications using WAI and optionally a database (Persistent).
