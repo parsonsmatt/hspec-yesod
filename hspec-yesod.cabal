@@ -53,7 +53,7 @@ test-suite test
     hs-source-dirs: test
     build-depends:          base
                           , yesod-test
-                          , yesod-hspec
+                          , hspec-yesod
                           , hspec
                           , HUnit
                           , xml-conduit
