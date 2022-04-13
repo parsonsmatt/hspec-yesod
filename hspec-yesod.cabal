@@ -1,4 +1,4 @@
-name:               yesod-hspec
+name:               hspec-yesod
 version:            1.6.12
 license:            MIT
 license-file:       LICENSE
