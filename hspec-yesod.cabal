@@ -43,7 +43,7 @@ library
                    , yesod-core                >= 1.6.17
                    , yesod-test                 
 
-    exposed-modules: Yesod.Hspec
+    exposed-modules: Test.Hspec.Yesod
     ghc-options:  -Wall
     hs-source-dirs: src
 
@@ -54,8 +54,8 @@ test-suite test
     hs-source-dirs: test
     build-depends:          base
                           , yesod-test
-                          , yesod-hspec
                           , hspec
+                          , hspec-yesod
                           , HUnit
                           , xml-conduit
                           , bytestring

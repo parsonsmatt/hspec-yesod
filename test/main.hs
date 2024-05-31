@@ -24,7 +24,7 @@ import qualified Test.Hspec as Hspec
 
 import Yesod.Core
 import Yesod.Form
-import Yesod.Hspec
+import Test.Hspec.Yesod
 import Yesod.Test.CssQuery
 import Yesod.Test.TransversingCSS
 import Text.XML
