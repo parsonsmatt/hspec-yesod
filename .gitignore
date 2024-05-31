@@ -1,0 +1,29 @@
+*~
+*.o
+*.o_p
+*.hi
+dist/
+dist-stack/
+stack.yaml.lock
+.stack-work
+*.swp
+client_session_key.aes
+cabal-dev/
+yesod/foobar/
+.hsenv/
+.cabal-sandbox/
+cabal.sandbox.config
+/vendor/
+.shelly/
+tarballs/
+
+# useful when mounting into docker
+.cabal
+.ghc
+.stackage
+.bash_history
+
+# OS X
+.DS_Store
+*.yaml.lock
+dist-newstyle/
