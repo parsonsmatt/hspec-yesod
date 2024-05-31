@@ -10,11 +10,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
-Yesod.Hspec is a pragmatic framework for testing web applications built
-using wai.
 
-By pragmatic I may also mean 'dirty'. Its main goal is to encourage integration
-and system testing of web applications by making everything /easy to test/.
+"Test.Hspec.Yesod" is a fork of "Yesod.Test" that is designed to be a mostly drop-in replacement that follows the @hspec@ idioms more closely.
+The intention is to provide a test framework that allows for easier integration testing of your web application.
 
 Your tests are like browser sessions that keep track of cookies and the last
 visited page. You can perform assertions on the content of HTML responses,
@@ -106,9 +104,17 @@ liftIO $ 'Test.HUnit.Base.assertBool' "a is greater than b" (a > b) -- HUnit ass
 
 yesod-test provides a handful of assertion functions that are already lifted, such as 'assertEq', as well.
 
+== Scaling
+
+One problem with this approach is that the test suite doesn't scale particularly well.
+In order to call a @withApp :: SpecWith (YesodExampleData App) -> Spec@ sort of function, you need to depend on every single module that any @Handler@ modules depends on.
+This slows down compilation significantly in very large projects, especially if you're combining your tests and library into a package component (which generally greatly improves build/test cycles).
+
+As a result, it is generally better to separate your integration tests and your unit tests into different modules.
+
 -}
 
-module Yesod.Hspec
+module Test.Hspec.Yesod
     ( -- * Declaring and running your test suite
       yesodSpec
     , YesodSpec
@@ -1290,7 +1296,7 @@ setUrl url' = do
     site <- fmap rbdSite getSIO
     eurl <- Yesod.Core.Unsafe.runFakeHandler
         M.empty
-        (const $ error "Yesod.Hspec: No logger available")
+        (const $ error "Test.Hspec.Yesod: No logger available")
         site
         (toTextUrl url')
     url <- either (error . show) return eurl

@@ -1,4 +1,8 @@
-# yesod-test
+# hspec-yesod
+
+A fork of [`yesod-test`](https://hackage.haskell.org/package/yesod-test) that provides more integration with `hspec` features, like hooks.
+
+## README of `yesod-test`
 
 Pragmatic integration tests for haskell web applications using WAI and optionally a database (Persistent).
 
