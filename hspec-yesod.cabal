@@ -45,7 +45,7 @@ library
                    , yesod-test                 
 
     exposed-modules: Test.Hspec.Yesod
-    ghc-options:  -Wall
+    ghc-options:  -Wall -fwarn-redundant-constraints
     hs-source-dirs: src
 
 test-suite test

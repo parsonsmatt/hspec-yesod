@@ -284,7 +284,8 @@ import qualified Yesod.Test.Internal as YT.Internal (getBodyTextPreview, content
 --
 -- Since 1.2.4
 data YesodExampleData site = YesodExampleData
-    { yedMiddleware :: !Middleware
+    { yedCreateApplication :: !(site -> Middleware -> IO Application)
+    , yedMiddleware :: !Middleware
     , yedSite :: !site
     , yedCookies :: !Cookies
     , yedResponse :: !(Maybe SResponse)
@@ -358,7 +359,8 @@ yesodSpec :: YesodDispatch site
 yesodSpec site =
     before $ do
         pure YesodExampleData
-            { yedMiddleware = id
+            { yedCreateApplication = \finalSite middleware -> middleware <$> toWaiAppPlain finalSite
+            , yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
             , yedResponse = Nothing
@@ -388,7 +390,8 @@ yesodSpecWithSiteGeneratorAndArgument getSiteAction =
     beforeWith $ \a -> do
         site <- getSiteAction a
         pure YesodExampleData
-            { yedMiddleware = id
+            { yedCreateApplication = \finalSite middleware -> middleware <$> toWaiAppPlain finalSite
+            , yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
             , yedResponse = Nothing
@@ -396,8 +399,7 @@ yesodSpecWithSiteGeneratorAndArgument getSiteAction =
             }
 
 ybefore_
-    :: (YesodDispatch site)
-    => YesodExample site ()
+    :: YesodExample site ()
     -> YesodSpec site
     -> YesodSpec site
 ybefore_ action =
@@ -419,8 +421,7 @@ addYesodTestCleanupHook mkCleanupHook =
             }
 
 ybefore
-    :: (YesodDispatch site)
-    => YesodExample site a
+    :: YesodExample site a
     -> YesodSpecWith site a
     -> YesodSpec site
 ybefore action =
@@ -428,8 +429,7 @@ ybefore action =
         runSIO (unYesodExample action) yed
 
 ybeforeWith
-    :: (YesodDispatch site)
-    => (a -> YesodExample site b)
+    :: (a -> YesodExample site b)
     -> YesodSpecWith site b
     -> YesodSpecWith site a
 ybeforeWith mkAction =
@@ -456,7 +456,7 @@ ybeforeWith mkAction =
 --             }
 
 -- | Describe a single test that keeps cookies, and a reference to the last response.
-yit :: (HasCallStack, YesodDispatch site) => String -> YesodExample site () -> YesodSpec site
+yit :: (HasCallStack) => String -> YesodExample site () -> YesodSpec site
 yit = it
 
 -- | Modifies the site ('yedSite') of the test, and creates a new WAI app ('yedApp') for it.
@@ -481,8 +481,7 @@ yit = it
 --
 -- @since 1.6.8
 testModifySite
-    :: (YesodDispatch site)
-    => (site -> IO (site, Middleware)) -- ^ A function from the existing site, to a new site and middleware for a WAI app.
+    :: (site -> IO (site, Middleware)) -- ^ A function from the existing site, to a new site and middleware for a WAI app.
     -> YesodExample site ()
 testModifySite newSiteFn = do
   currentSite <- getTestYesod
@@ -1556,18 +1555,20 @@ type YSpec site = SpecWith (YesodExampleData site)
 -- | This creates a minimal 'YesodExampleData' for a given @site@. No
 -- middlewares are applied.
 siteToYesodExampleData
-    :: site
+    :: (YesodDispatch site)
+    => site
     -> YesodExampleData site
 siteToYesodExampleData site =
     YesodExampleData
-        { yedMiddleware = id
+        { yedCreateApplication = \site' middleware -> middleware <$> toWaiAppPlain site'
+        , yedMiddleware = id
         , yedSite = site
         , yedCookies = M.empty
         , yedResponse = Nothing
         , yedTestCleanup = pure ()
         }
 
-instance YesodDispatch site => Example (SIO (YesodExampleData site) a) where
+instance Example (SIO (YesodExampleData site) a) where
     type Arg (SIO (YesodExampleData site) a) = YesodExampleData site
 
     evaluateExample example params action =
