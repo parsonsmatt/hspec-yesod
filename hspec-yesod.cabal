@@ -26,6 +26,7 @@ library
                    , conduit
                    , containers
                    , cookie
+                   , exceptions   
                    , hspec-core                == 2.*
                    , html-conduit              >= 0.1
                    , http-types                >= 0.7

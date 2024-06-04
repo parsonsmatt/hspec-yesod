@@ -1,3 +1,4 @@
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE DerivingStrategies, GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -121,7 +122,7 @@ module Test.Hspec.Yesod
     , yesodSpecWithSiteGenerator
     , yesodSpecWithSiteGeneratorAndArgument
     , yesodSpecApp
-    , YesodExample (..)
+    , YesodExample
     , YesodExampleData(..)
     , TestApp (..)
     , YSpec
@@ -233,6 +234,7 @@ module Test.Hspec.Yesod
     , withResponse
     ) where
 
+import Control.Monad.Catch (finally)
 import Test.Hspec.Core.Spec
 import Test.Hspec.Core.Hooks
 import qualified Data.List as DL
@@ -249,13 +251,11 @@ import Data.CaseInsensitive (CI)
 import qualified Data.CaseInsensitive as CI
 import Network.Wai
 import Network.Wai.Test hiding (assertHeader, assertNoHeader, request)
-import Control.Monad.Trans.Reader (ReaderT (..))
 import Control.Monad.IO.Class
 import qualified Control.Monad.State.Class as MS
 import Control.Monad.State.Class hiding (get)
 import System.IO
 import Yesod.Core.Unsafe (runFakeHandler)
-import Yesod.Test.TransversingCSS
 import Yesod.Core
 import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Encoding (encodeUtf8, decodeUtf8, decodeUtf8With)
@@ -269,14 +269,16 @@ import Data.Time.Clock (getCurrentTime)
 import Control.Applicative ((<$>))
 import Text.Show.Pretty (ppShow)
 import Data.Monoid (mempty)
-import GHC.Stack (HasCallStack)
 import Data.ByteArray.Encoding (convertToBase, Base(..))
 import Network.HTTP.Types.Header (hContentType)
 import Data.Aeson (eitherDecode')
 import Control.Monad
 
-import Yesod.Test.Internal.SIO
-import Yesod.Test.Internal (getBodyTextPreview, contentTypeHeaderIsUtf8)
+import qualified Yesod.Test.TransversingCSS as YT.CSS
+import Yesod.Test.TransversingCSS (HtmlLBS, Query)
+import qualified Yesod.Test.Internal.SIO as YT.SIO
+import Yesod.Test.Internal.SIO (SIO, execSIO, runSIO)
+import qualified Yesod.Test.Internal as YT.Internal (getBodyTextPreview, contentTypeHeaderIsUtf8)
 
 -- | The state used in a single test case defined using 'yit'
 --
@@ -292,9 +294,10 @@ data YesodExampleData site = YesodExampleData
 -- | A single test case, to be run with 'yit'.
 --
 -- Since 1.2.0
-newtype YesodExample site a = YesodExample { unYesodExample :: SIO (YesodExampleData site) a }
-    deriving newtype
-        (Functor, Applicative, Monad, MonadIO, MonadState (YesodExampleData site), MonadUnliftIO)
+type YesodExample site = YT.SIO.SIO (YesodExampleData site)
+
+unYesodExample :: YT.SIO.SIO (YesodExampleData site) a -> YT.SIO.SIO (YesodExampleData site) a
+unYesodExample = id
 
 -- | Mapping from cookie name to value.
 --
@@ -341,7 +344,7 @@ data RequestPart
 -- | The 'RequestBuilder' state monad constructs a URL encoded string of arguments
 -- to send with your requests. Some of the functions that run on it use the current
 -- response to analyze the forms that the server is expecting to receive.
-type RequestBuilder site = SIO (RequestBuilderData site)
+type RequestBuilder site = YT.SIO.SIO (RequestBuilderData site)
 
 -- | Start describing a Tests suite keeping cookies and a reference to the tested 'Application'
 -- and 'ConnectionPool'
@@ -563,7 +566,7 @@ htmlQuery'
     -> Query
     -> m [HtmlLBS]
 htmlQuery' getter errTrace query = withResponse' getter ("Tried to invoke htmlQuery' in order to read HTML of a previous response." : errTrace) $ \ res ->
-  case findBySelector (simpleBody res) query of
+  case YT.CSS.findBySelector (simpleBody res) query of
     Left err -> failure $ query <> " did not parse: " <> T.pack (show err)
     Right matches -> return $ map (encodeUtf8 . TL.pack) matches
 
@@ -611,13 +614,13 @@ statusIs :: (MonadIO m, MonadState (YesodExampleData site) m, HasCallStack) => I
 statusIs number = do
   withResponse $ \(SResponse status headers body) -> do
     let mContentType = lookup hContentType headers
-        isUTF8ContentType = maybe False contentTypeHeaderIsUtf8 mContentType
+        isUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mContentType
 
     liftIO $ flip HUnit.assertBool (H.statusCode status == number) $ concat
       [ "Expected status was ", show number
       , " but received status was ", show $ H.statusCode status
       , if isUTF8ContentType
-          then ". For debugging, the body was: " <> (T.unpack $ getBodyTextPreview body)
+          then ". For debugging, the body was: " <> (T.unpack $ YT.Internal.getBodyTextPreview body)
           else ""
       ]
 
@@ -814,7 +817,7 @@ requireJSONResponse = do
         isJSONContentType
         (failure $ T.pack $ "Expected `Content-Type: application/json` in the headers, got: " ++ show headers)
     case eitherDecode' body of
-        Left err -> failure $ T.concat ["Failed to parse JSON response; error: ", T.pack err, "JSON: ", getBodyTextPreview body]
+        Left err -> failure $ T.concat ["Failed to parse JSON response; error: ", T.pack err, "JSON: ", YT.Internal.getBodyTextPreview body]
         Right v -> return v
 
 -- | Outputs the last response body to stderr (So it doesn't get captured by HSpec). Useful for debugging.
@@ -855,7 +858,7 @@ printMatches query = do
 -- >   addPostParam "key" "value"
 addPostParam :: T.Text -> T.Text -> RequestBuilder site ()
 addPostParam name value =
-  modifySIO $ \rbd -> rbd { rbdPostData = (addPostData (rbdPostData rbd)) }
+  YT.SIO.modifySIO $ \rbd -> rbd { rbdPostData = (addPostData (rbdPostData rbd)) }
   where addPostData (BinaryPostData _) = error "Trying to add post param to binary content."
         addPostData (MultipleItemsPostData posts) =
           MultipleItemsPostData $ ReqKvPart name value : posts
@@ -868,7 +871,7 @@ addPostParam name value =
 -- > request $ do
 -- >   addGetParam "key" "value" -- Adds ?key=value to the URL
 addGetParam :: T.Text -> T.Text -> RequestBuilder site ()
-addGetParam name value = modifySIO $ \rbd -> rbd
+addGetParam name value = YT.SIO.modifySIO $ \rbd -> rbd
     { rbdGets = (TE.encodeUtf8 name, Just $ TE.encodeUtf8 value)
               : rbdGets rbd
     }
@@ -887,7 +890,7 @@ addFile :: T.Text -- ^ The parameter name for the file.
         -> RequestBuilder site ()
 addFile name path mimetype = do
   contents <- liftIO $ BSL8.readFile path
-  modifySIO $ \rbd -> rbd { rbdPostData = (addPostData (rbdPostData rbd) contents) }
+  YT.SIO.modifySIO $ \rbd -> rbd { rbdPostData = (addPostData (rbdPostData rbd) contents) }
     where addPostData (BinaryPostData _) _ = error "Trying to add file after setting binary content."
           addPostData (MultipleItemsPostData posts) contents =
             MultipleItemsPostData $ ReqFilePart name path contents mimetype : posts
@@ -896,7 +899,7 @@ addFile name path mimetype = do
 -- This looks up the name of a field based on the contents of the label pointing to it.
 genericNameFromLabel :: HasCallStack => (T.Text -> T.Text -> Bool) -> T.Text -> RequestBuilder site T.Text
 genericNameFromLabel match label = do
-  mres <- fmap rbdResponse getSIO
+  mres <- fmap rbdResponse YT.SIO.getSIO
   res <-
     case mres of
       Nothing -> failure "genericNameFromLabel: No response available"
@@ -1157,7 +1160,7 @@ addTokenFromCookieNamedToHeaderNamed cookieName headerName = do
 -- Since 1.4.3.2
 getRequestCookies :: HasCallStack => RequestBuilder site Cookies
 getRequestCookies = do
-  requestBuilderData <- getSIO
+  requestBuilderData <- YT.SIO.getSIO
   headers <- case simpleHeaders Control.Applicative.<$> rbdResponse requestBuilderData of
                   Just h -> return h
                   Nothing -> failure "getRequestCookies: No request has been made yet; the cookies can't be looked up."
@@ -1278,7 +1281,7 @@ getLocation = do
 -- > request $ do
 -- >   setMethod methodPut
 setMethod :: H.Method -> RequestBuilder site ()
-setMethod m = modifySIO $ \rbd -> rbd { rbdMethod = m }
+setMethod m = YT.SIO.modifySIO $ \rbd -> rbd { rbdMethod = m }
 
 -- | Sets the URL used by the request.
 --
@@ -1293,7 +1296,7 @@ setUrl :: (Yesod site, RedirectUrl site url)
        => url
        -> RequestBuilder site ()
 setUrl url' = do
-    site <- fmap rbdSite getSIO
+    site <- fmap rbdSite YT.SIO.getSIO
     eurl <- Yesod.Core.Unsafe.runFakeHandler
         M.empty
         (const $ error "Test.Hspec.Yesod: No logger available")
@@ -1301,7 +1304,7 @@ setUrl url' = do
         (toTextUrl url')
     url <- either (error . show) return eurl
     let (urlPath, urlQuery) = T.break (== '?') url
-    modifySIO $ \rbd -> rbd
+    YT.SIO.modifySIO $ \rbd -> rbd
         { rbdPath =
             case DL.filter (/="") $ H.decodePathSegments $ TE.encodeUtf8 urlPath of
                 ("http:":_:rest) -> rest
@@ -1322,7 +1325,7 @@ setUrl url' = do
 clickOn :: (HasCallStack, Yesod site, MonadIO m, MonadState (YesodExampleData site) m) => Query -> m ()
 clickOn query = do
   withResponse' yedResponse ["Tried to invoke clickOn in order to read HTML of a previous response."] $ \ res ->
-    case findAttributeBySelector (simpleBody res) query "href" of
+    case YT.CSS.findAttributeBySelector (simpleBody res) query "href" of
       Left err -> failure $ query <> " did not parse: " <> T.pack (show err)
       Right [[match]] -> get match
       Right matches -> failure $ "Expected exactly one match for clickOn: got " <> T.pack (show matches)
@@ -1340,7 +1343,7 @@ clickOn query = do
 -- > request $ do
 -- >   setRequestBody $ encode $ object ["age" .= (1 :: Integer)]
 setRequestBody :: BSL8.ByteString -> RequestBuilder site ()
-setRequestBody body = modifySIO $ \rbd -> rbd { rbdPostData = BinaryPostData body }
+setRequestBody body = YT.SIO.modifySIO $ \rbd -> rbd { rbdPostData = BinaryPostData body }
 
 -- | Adds the given header to the request; see "Network.HTTP.Types.Header" for creating 'Header's.
 --
@@ -1350,7 +1353,7 @@ setRequestBody body = modifySIO $ \rbd -> rbd { rbdPostData = BinaryPostData bod
 -- > request $ do
 -- >   addRequestHeader (hUserAgent, "Chrome/41.0.2228.0")
 addRequestHeader :: H.Header -> RequestBuilder site ()
-addRequestHeader header = modifySIO $ \rbd -> rbd
+addRequestHeader header = YT.SIO.modifySIO $ \rbd -> rbd
     { rbdHeaders = header : rbdHeaders rbd
     }
 
@@ -1549,22 +1552,6 @@ mkTestApp site = TestApp
 
 type YSpec site = SpecWith (YesodExampleData site)
 
-instance YesodDispatch site => Example (r -> YesodExample site a) where
-    type Arg (r -> YesodExample site a) = (YesodExampleData site, r)
-
-    evaluateExample example =
-        evaluateExample
-            (\(yed, r) ->
-                void $ evalSIO (unYesodExample (example r)) yed
-            )
-
-instance YesodDispatch site => Example (YesodExample site a) where
-    type Arg (YesodExample site a) = YesodExampleData site
-
-    evaluateExample example =
-        evaluateExample
-            (void . evalSIO (unYesodExample example))
-
 -- | This creates a minimal 'YesodExampleData' for a given @site@. No
 -- middlewares are applied.
 siteToYesodExampleData
@@ -1581,18 +1568,14 @@ siteToYesodExampleData site =
         }
 
 instance YesodDispatch site => Example (SIO (YesodExampleData site) a) where
-    type Arg (SIO (YesodExampleData site) a) = TestApp site
+    type Arg (SIO (YesodExampleData site) a) = YesodExampleData site
 
     evaluateExample example params action =
         evaluateExample
-            (action $ \testApp -> do
-                _ <- evalSIO example YesodExampleData
-                    { yedApp = \_ -> testAppMiddleware testApp <$> toWaiAppPlain (testAppSite testApp)
-                    , yedSite = testAppSite testApp
-                    , yedCookies = M.empty
-                    , yedResponse = Nothing
-                    , yedTestCleanup = pure ()
-                    }
-                return ())
+            (action $ \yed -> do
+                void $ YT.SIO.evalSIO example yed
+                    `finally` do
+                        yedTestCleanup yed
+            )
             params
             ($ ())
