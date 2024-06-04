@@ -121,7 +121,7 @@ module Test.Hspec.Yesod
     , YesodSpec
     , yesodSpecWithSiteGenerator
     , yesodSpecWithSiteGeneratorAndArgument
-    , yesodSpecApp
+    -- , yesodSpecApp
     , YesodExample
     , YesodExampleData(..)
     , TestApp (..)
@@ -284,7 +284,7 @@ import qualified Yesod.Test.Internal as YT.Internal (getBodyTextPreview, content
 --
 -- Since 1.2.4
 data YesodExampleData site = YesodExampleData
-    { yedApp :: !(site -> IO Application)
+    { yedMiddleware :: !Middleware
     , yedSite :: !site
     , yedCookies :: !Cookies
     , yedResponse :: !(Maybe SResponse)
@@ -358,7 +358,7 @@ yesodSpec :: YesodDispatch site
 yesodSpec site =
     before $ do
         pure YesodExampleData
-            { yedApp = toWaiAppPlain
+            { yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
             , yedResponse = Nothing
@@ -388,7 +388,7 @@ yesodSpecWithSiteGeneratorAndArgument getSiteAction =
     beforeWith $ \a -> do
         site <- getSiteAction a
         pure YesodExampleData
-            { yedApp = toWaiAppPlain
+            { yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
             , yedResponse = Nothing
@@ -436,24 +436,24 @@ ybeforeWith mkAction =
     beforeWith $ \(yed, a) ->
         runSIO (unYesodExample (mkAction a)) yed
 
--- | Same as yesodSpec, but instead of taking a site it
+-- Same as yesodSpec, but instead of taking a site it
 -- takes an action which produces the 'Application' for each test.
 -- This lets you use your middleware from makeApplication
-yesodSpecApp
-    :: YesodDispatch site
-    => site
-    -> IO Application
-    -> YesodSpec site
-    -> Spec
-yesodSpecApp site getApp =
-    before $ do
-        pure YesodExampleData
-            { yedApp = const getApp
-            , yedSite = site
-            , yedCookies = M.empty
-            , yedResponse = Nothing
-            , yedTestCleanup = pure ()
-            }
+-- yesodSpecApp
+--     :: YesodDispatch site
+--     => site
+--     -> IO Application
+--     -> YesodSpec site
+--     -> Spec
+-- yesodSpecApp site getApp =
+--     before $ do
+--         pure YesodExampleData
+--             { yedCreateApplication = const getApp
+--             , yedSite = site
+--             , yedCookies = M.empty
+--             , yedResponse = Nothing
+--             , yedTestCleanup = pure ()
+--             }
 
 -- | Describe a single test that keeps cookies, and a reference to the last response.
 yit :: (HasCallStack, YesodDispatch site) => String -> YesodExample site () -> YesodSpec site
@@ -489,7 +489,7 @@ testModifySite newSiteFn = do
   (newSite, middleware) <- liftIO $ newSiteFn currentSite
   modify $ \yed -> yed
     { yedSite = newSite
-    , yedApp = \site -> middleware <$> yedApp yed site
+    , yedMiddleware = middleware
     }
 
 -- | Sets a cookie
@@ -1173,7 +1173,7 @@ getRequestCookies = do
 -- ==== __Examples__
 --
 -- > post HomeR
-post :: (Yesod site, RedirectUrl site url)
+post :: (YesodDispatch site, RedirectUrl site url)
      => url
      -> YesodExample site ()
 post = performMethod "POST"
@@ -1186,7 +1186,7 @@ post = performMethod "POST"
 --
 -- > import Data.Aeson
 -- > postBody HomeR (encode $ object ["age" .= (1 :: Integer)])
-postBody :: (Yesod site, RedirectUrl site url)
+postBody :: (YesodDispatch site, RedirectUrl site url)
          => url
          -> BSL8.ByteString
          -> YesodExample site ()
@@ -1202,7 +1202,7 @@ postBody url body = request $ do
 -- > get HomeR
 --
 -- > get ("http://google.com" :: Text)
-get :: (Yesod site, RedirectUrl site url)
+get :: (YesodDispatch site, RedirectUrl site url)
     => url
     -> YesodExample site ()
 get = performMethod "GET"
@@ -1215,7 +1215,7 @@ get = performMethod "GET"
 --
 -- > performMethod "DELETE" HomeR
 performMethod
-    :: (Yesod site, RedirectUrl site url)
+    :: (YesodDispatch site, RedirectUrl site url)
     => ByteString
     -> url
     -> YesodExample site ()
@@ -1232,7 +1232,7 @@ performMethod method url = request $ do
 -- > get HomeR
 -- > followRedirect
 followRedirect
-    :: (Yesod site)
+    :: (YesodDispatch site)
     => YesodExample site (Either T.Text T.Text) -- ^ 'Left' with an error message if not a redirect, 'Right' with the redirected URL if it was
 followRedirect = do
   mr <- getResponse
@@ -1322,7 +1322,7 @@ setUrl url' = do
 -- > clickOn "a#idofthelink"
 --
 -- @since 1.5.7
-clickOn :: (HasCallStack, Yesod site) => Query -> YesodExample site ()
+clickOn :: (HasCallStack, YesodDispatch site) => Query -> YesodExample site ()
 clickOn query = do
   withResponse' yedResponse ["Tried to invoke clickOn in order to read HTML of a previous response."] $ \ res ->
     case YT.CSS.findAttributeBySelector (simpleBody res) query "href" of
@@ -1372,11 +1372,11 @@ addBasicAuthHeader username password =
   let credentials = convertToBase Base64 $ CI.original $ username <> ":" <> password
   in addRequestHeader ("Authorization", "Basic " <> credentials)
 
-mkApplication :: YesodExample site Application
+mkApplication :: YesodDispatch site => YesodExample site Application
 mkApplication = do
-    mkApp <- MS.gets yedApp
+    middleware <- MS.gets yedMiddleware
     site <- MS.gets yedSite
-    liftIO $ mkApp site
+    fmap middleware . liftIO $ toWaiAppPlain site
 
 -- | The general interface for performing requests. 'request' takes a 'RequestBuilder',
 -- constructs a request, and executes it.
@@ -1391,8 +1391,10 @@ mkApplication = do
 -- >   byLabel "First Name" "Felipe"
 -- >   setMethod "PUT"
 -- >   setUrl NameR
-request :: RequestBuilder site ()
-        -> YesodExample site ()
+request
+    :: (YesodDispatch site)
+    => RequestBuilder site ()
+    -> YesodExample site ()
 request reqBuilder = do
     app <- mkApplication
     site <- MS.gets yedSite
@@ -1554,12 +1556,11 @@ type YSpec site = SpecWith (YesodExampleData site)
 -- | This creates a minimal 'YesodExampleData' for a given @site@. No
 -- middlewares are applied.
 siteToYesodExampleData
-    :: (YesodDispatch site)
-    => site
+    :: site
     -> YesodExampleData site
 siteToYesodExampleData site =
     YesodExampleData
-        { yedApp = \_ -> toWaiAppPlain site
+        { yedMiddleware = id
         , yedSite = site
         , yedCookies = M.empty
         , yedResponse = Nothing
