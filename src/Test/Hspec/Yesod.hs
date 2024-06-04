@@ -1371,11 +1371,13 @@ addBasicAuthHeader username password =
   let credentials = convertToBase Base64 $ CI.original $ username <> ":" <> password
   in addRequestHeader ("Authorization", "Basic " <> credentials)
 
-mkApplication :: YesodDispatch site => YesodExample site Application
+yesodExampleDataToApplication :: YesodExampleData site -> IO Application
+yesodExampleDataToApplication YesodExampleData {..} =
+    yedCreateApplication yedSite yedMiddleware
+
+mkApplication :: YesodExample site Application
 mkApplication = do
-    middleware <- MS.gets yedMiddleware
-    site <- MS.gets yedSite
-    fmap middleware . liftIO $ toWaiAppPlain site
+    liftIO . yesodExampleDataToApplication =<< MS.get
 
 -- | The general interface for performing requests. 'request' takes a 'RequestBuilder',
 -- constructs a request, and executes it.
@@ -1391,8 +1393,7 @@ mkApplication = do
 -- >   setMethod "PUT"
 -- >   setUrl NameR
 request
-    :: (YesodDispatch site)
-    => RequestBuilder site ()
+    :: RequestBuilder site ()
     -> YesodExample site ()
 request reqBuilder = do
     app <- mkApplication
