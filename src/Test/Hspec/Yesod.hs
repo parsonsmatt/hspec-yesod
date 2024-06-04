@@ -314,13 +314,13 @@ type YesodSpecWith site r = SpecWith (YesodExampleData site, r)
 -- | Get the foundation value used for the current test.
 --
 -- Since 1.2.0
-getTestYesod :: (MonadState (YesodExampleData site) m) => m site
+getTestYesod :: YesodExample site site
 getTestYesod = fmap yedSite MS.get
 
 -- | Get the most recently provided response value, if available.
 --
 -- Since 1.2.0
-getResponse :: (MonadState (YesodExampleData site) m) => m (Maybe SResponse)
+getResponse :: YesodExample site (Maybe SResponse)
 getResponse = fmap yedResponse MS.get
 
 data RequestBuilderData site = RequestBuilderData
@@ -481,15 +481,15 @@ yit = it
 --
 -- @since 1.6.8
 testModifySite
-    :: (MonadIO m, MonadState (YesodExampleData site) m, YesodDispatch site)
+    :: (YesodDispatch site)
     => (site -> IO (site, Middleware)) -- ^ A function from the existing site, to a new site and middleware for a WAI app.
-    -> m ()
+    -> YesodExample site ()
 testModifySite newSiteFn = do
   currentSite <- getTestYesod
   (newSite, middleware) <- liftIO $ newSiteFn currentSite
   modify $ \yed -> yed
     { yedSite = newSite
-    , yedApp = \_ -> middleware <$> toWaiAppPlain newSite
+    , yedApp = \site -> middleware <$> yedApp yed site
     }
 
 -- | Sets a cookie
@@ -501,7 +501,7 @@ testModifySite newSiteFn = do
 -- > testSetCookie Cookie.defaultSetCookie { Cookie.setCookieName = "name" }
 --
 -- @since 1.6.6
-testSetCookie :: (MonadState (YesodExampleData site) m) => Cookie.SetCookie -> m ()
+testSetCookie ::  Cookie.SetCookie -> YesodExample site ()
 testSetCookie cookie = do
   let key = Cookie.setCookieName cookie
   modify $ \yed -> yed { yedCookies = M.insert key cookie (yedCookies yed) }
@@ -514,32 +514,32 @@ testSetCookie cookie = do
 -- > testDeleteCookie "name"
 --
 -- @since 1.6.6
-testDeleteCookie :: (MonadState (YesodExampleData site) m) => ByteString -> m ()
+testDeleteCookie :: ByteString -> YesodExample site ()
 testDeleteCookie k = do
   modify $ \yed -> yed { yedCookies = M.delete k (yedCookies yed) }
 
 -- | Modify the current cookies with the given mapping function
 --
 -- @since 1.6.6
-testModifyCookies :: (MonadState (YesodExampleData site) m) => (Cookies -> Cookies) -> m ()
+testModifyCookies :: (Cookies -> Cookies) -> YesodExample site ()
 testModifyCookies f = do
   modify $ \yed -> yed { yedCookies = f (yedCookies yed) }
 
 -- | Clears the current cookies
 --
 -- @since 1.6.6
-testClearCookies :: MonadState (YesodExampleData site) m => m ()
+testClearCookies :: YesodExample site ()
 testClearCookies = do
   modify $ \yed -> yed { yedCookies = M.empty }
 
 -- Performs a given action using the last response. Use this to create
 -- response-level assertions
 withResponse'
-    :: (HasCallStack, MonadState state m, MonadIO m)
-    => (state -> Maybe SResponse)
+    :: (HasCallStack)
+    => (s -> Maybe SResponse)
     -> [T.Text]
-    -> (SResponse -> m a)
-    -> m a
+    -> (SResponse -> SIO s a)
+    -> SIO s a
 withResponse' getter errTrace f = maybe err f . getter =<< MS.get
  where err = failure msg
        msg = if null errTrace
@@ -550,7 +550,7 @@ withResponse' getter errTrace f = maybe err f . getter =<< MS.get
 
 -- | Performs a given action using the last response. Use this to create
 -- response-level assertions
-withResponse :: (MonadState (YesodExampleData site) m, MonadIO m, HasCallStack) => (SResponse -> m a) -> m a
+withResponse :: (HasCallStack) => (SResponse -> SIO (YesodExampleData site) a) -> SIO (YesodExampleData site) a
 withResponse = withResponse' yedResponse []
 
 -- | Use HXT to parse a value from an HTML tag.
@@ -560,18 +560,18 @@ parseHTML html = fromDocument $ HD.parseLBS html
 
 -- | Query the last response using CSS selectors, returns a list of matched fragments
 htmlQuery'
-    :: (HasCallStack, MonadState state m, MonadIO m)
-    => (state -> Maybe SResponse)
+    :: (HasCallStack)
+    => (site -> Maybe SResponse)
     -> [T.Text]
     -> Query
-    -> m [HtmlLBS]
+    -> SIO site [HtmlLBS]
 htmlQuery' getter errTrace query = withResponse' getter ("Tried to invoke htmlQuery' in order to read HTML of a previous response." : errTrace) $ \ res ->
   case YT.CSS.findBySelector (simpleBody res) query of
     Left err -> failure $ query <> " did not parse: " <> T.pack (show err)
     Right matches -> return $ map (encodeUtf8 . TL.pack) matches
 
 -- | Query the last response using CSS selectors, returns a list of matched fragments
-htmlQuery :: (MonadState (YesodExampleData site) m, HasCallStack, MonadIO m) => Query -> m [HtmlLBS]
+htmlQuery :: HasCallStack => Query -> YesodExample site [HtmlLBS]
 htmlQuery = htmlQuery' yedResponse []
 
 -- | Asserts that the two given values are equal.
@@ -610,7 +610,7 @@ assertEqualNoShow msg a b = liftIO $ HUnit.assertBool msg (a == b)
 --
 -- > get HomeR
 -- > statusIs 200
-statusIs :: (MonadIO m, MonadState (YesodExampleData site) m, HasCallStack) => Int -> m ()
+statusIs :: HasCallStack => Int -> YesodExample site ()
 statusIs number = do
   withResponse $ \(SResponse status headers body) -> do
     let mContentType = lookup hContentType headers
@@ -636,7 +636,7 @@ statusIs number = do
 -- > import qualified Data.ByteString.Char8 as BS8
 -- > getHomeR
 -- > assertHeader (CI.mk (BS8.pack "key")) (BS8.pack "value")
-assertHeader :: (HasCallStack, MonadIO m, MonadState (YesodExampleData site) m) => CI BS8.ByteString -> BS8.ByteString -> m ()
+assertHeader :: (HasCallStack) => CI BS8.ByteString -> BS8.ByteString -> YesodExample site ()
 assertHeader header value = withResponse $ \ SResponse { simpleHeaders = h } ->
   case lookup header h of
     Nothing -> failure $ T.pack $ concat
@@ -667,7 +667,7 @@ assertHeader header value = withResponse $ \ SResponse { simpleHeaders = h } ->
 -- > import qualified Data.ByteString.Char8 as BS8
 -- > getHomeR
 -- > assertNoHeader (CI.mk (BS8.pack "key"))
-assertNoHeader :: (HasCallStack, MonadIO m, MonadState (YesodExampleData site) m) => CI BS8.ByteString -> m ()
+assertNoHeader :: (HasCallStack) => CI BS8.ByteString -> YesodExample site ()
 assertNoHeader header = withResponse $ \ SResponse { simpleHeaders = h } ->
   case lookup header h of
     Nothing -> return ()
@@ -685,7 +685,7 @@ assertNoHeader header = withResponse $ \ SResponse { simpleHeaders = h } ->
 --
 -- > get HomeR
 -- > bodyEquals "<html><body><h1>Hello, World</h1></body></html>"
-bodyEquals :: (MonadIO m, MonadState (YesodExampleData site) m, HasCallStack) => String -> m ()
+bodyEquals :: HasCallStack => String -> YesodExample site ()
 bodyEquals text = withResponse $ \ res -> do
   let actual = simpleBody res
       msg    = concat [ "Expected body to equal:\n\t"
@@ -702,7 +702,7 @@ bodyEquals text = withResponse $ \ res -> do
 --
 -- > get HomeR
 -- > bodyContains "<h1>Foo</h1>"
-bodyContains :: (MonadIO m, MonadState (YesodExampleData site) m, HasCallStack) => String -> m ()
+bodyContains :: (HasCallStack) => String -> YesodExample site ()
 bodyContains text = withResponse $ \ res ->
   liftIO $ HUnit.assertBool ("Expected body to contain " ++ text) $
     (simpleBody res) `contains` text
@@ -716,7 +716,7 @@ bodyContains text = withResponse $ \ res ->
 -- > bodyNotContains "<h1>Foo</h1>
 --
 -- @since 1.5.3
-bodyNotContains :: (MonadIO m, MonadState (YesodExampleData site) m, HasCallStack) => String -> m ()
+bodyNotContains :: (HasCallStack) => String -> YesodExample site ()
 bodyNotContains text = withResponse $ \ res ->
   liftIO $ HUnit.assertBool ("Expected body not to contain " ++ text) $
     not $ contains (simpleBody res) text
@@ -736,7 +736,7 @@ contains a b = DL.isInfixOf b (TL.unpack $ decodeUtf8 a)
 -- > import qualified Data.Text as T
 -- > get HomeR
 -- > htmlAllContain (T.pack "h1#mainTitle") "Sign Up Now!" -- All <h1> tags with the ID mainTitle contain the string "Sign Up Now!"
-htmlAllContain :: (HasCallStack, MonadState (YesodExampleData site) m, MonadIO m) => Query -> String -> m ()
+htmlAllContain :: (HasCallStack) => Query -> String -> YesodExample site ()
 htmlAllContain query search = do
   matches <- htmlQuery query
   case matches of
@@ -754,7 +754,7 @@ htmlAllContain query search = do
 -- > htmlAnyContain "p" "Hello" -- At least one <p> tag contains the string "Hello"
 --
 -- Since 0.3.5
-htmlAnyContain :: (HasCallStack, MonadState (YesodExampleData site) m, MonadIO m) => Query -> String -> m ()
+htmlAnyContain :: (HasCallStack) => Query -> String -> YesodExample site ()
 htmlAnyContain query search = do
   matches <- htmlQuery query
   case matches of
@@ -773,7 +773,7 @@ htmlAnyContain query search = do
 -- > htmlNoneContain ".my-class" "Hello" -- No tags with the class "my-class" contain the string "Hello"
 --
 -- Since 1.2.2
-htmlNoneContain :: (HasCallStack, MonadState (YesodExampleData site) m, MonadIO m) => Query -> String -> m ()
+htmlNoneContain :: (HasCallStack) => Query -> String -> YesodExample site ()
 htmlNoneContain query search = do
   matches <- htmlQuery query
   case DL.filter (DL.isInfixOf search) (map (TL.unpack . decodeUtf8) matches) of
@@ -789,7 +789,7 @@ htmlNoneContain query search = do
 -- > {-# LANGUAGE OverloadedStrings #-}
 -- > get HomeR
 -- > htmlCount "p" 3 -- There are exactly 3 <p> tags in the response
-htmlCount :: (HasCallStack, MonadState (YesodExampleData site) m, MonadIO m) => Query -> Int -> m ()
+htmlCount :: (HasCallStack) => Query -> Int -> YesodExample site ()
 htmlCount query count = do
   matches <- fmap DL.length $ htmlQuery query
   liftIO $ flip HUnit.assertBool (matches == count)
@@ -808,7 +808,7 @@ htmlCount query count = do
 -- > (json :: Value) <- requireJSONResponse
 --
 -- @since 1.6.9
-requireJSONResponse :: (HasCallStack, FromJSON a, MonadIO m, MonadState (YesodExampleData site) m) => m a
+requireJSONResponse :: (HasCallStack, FromJSON a) => YesodExample site a
 requireJSONResponse = do
   withResponse $ \(SResponse _status headers body) -> do
     let mContentType = lookup hContentType headers
@@ -826,7 +826,7 @@ requireJSONResponse = do
 --
 -- > get HomeR
 -- > printBody
-printBody :: (MonadIO m, MonadState (YesodExampleData site) m) => m ()
+printBody ::  YesodExample site ()
 printBody = withResponse $ \ SResponse { simpleBody = b } ->
   liftIO $ BSL8.hPutStrLn stderr b
 
@@ -837,7 +837,7 @@ printBody = withResponse $ \ SResponse { simpleBody = b } ->
 -- > {-# LANGUAGE OverloadedStrings #-}
 -- > get HomeR
 -- > printMatches "h1" -- Prints all h1 tags
-printMatches :: (HasCallStack, MonadState (YesodExampleData site) m, MonadIO m) => Query -> m ()
+printMatches :: (HasCallStack) => Query -> YesodExample site ()
 printMatches query = do
   matches <- htmlQuery query
   liftIO $ hPutStrLn stderr $ show matches
@@ -1173,9 +1173,9 @@ getRequestCookies = do
 -- ==== __Examples__
 --
 -- > post HomeR
-post :: (Yesod site, RedirectUrl site url, MonadIO m, MonadState (YesodExampleData site) m)
+post :: (Yesod site, RedirectUrl site url)
      => url
-     -> m ()
+     -> YesodExample site ()
 post = performMethod "POST"
 
 -- | Perform a POST request to @url@ with the given body.
@@ -1186,10 +1186,10 @@ post = performMethod "POST"
 --
 -- > import Data.Aeson
 -- > postBody HomeR (encode $ object ["age" .= (1 :: Integer)])
-postBody :: (Yesod site, RedirectUrl site url, MonadIO m, MonadState (YesodExampleData site) m)
+postBody :: (Yesod site, RedirectUrl site url)
          => url
          -> BSL8.ByteString
-         -> m ()
+         -> YesodExample site ()
 postBody url body = request $ do
   setMethod "POST"
   setUrl url
@@ -1202,9 +1202,9 @@ postBody url body = request $ do
 -- > get HomeR
 --
 -- > get ("http://google.com" :: Text)
-get :: (Yesod site, RedirectUrl site url, MonadState (YesodExampleData site) m, MonadIO m)
+get :: (Yesod site, RedirectUrl site url)
     => url
-    -> m ()
+    -> YesodExample site ()
 get = performMethod "GET"
 
 -- | Perform a request using a given method to @url@.
@@ -1215,10 +1215,10 @@ get = performMethod "GET"
 --
 -- > performMethod "DELETE" HomeR
 performMethod
-    :: (Yesod site, RedirectUrl site url, MonadIO m, MonadState (YesodExampleData site) m)
+    :: (Yesod site, RedirectUrl site url)
     => ByteString
     -> url
-    -> m ()
+    -> YesodExample site ()
 performMethod method url = request $ do
   setMethod method
   setUrl url
@@ -1232,8 +1232,8 @@ performMethod method url = request $ do
 -- > get HomeR
 -- > followRedirect
 followRedirect
-    :: (Yesod site, MonadIO m, MonadState (YesodExampleData site) m)
-    => m (Either T.Text T.Text) -- ^ 'Left' with an error message if not a redirect, 'Right' with the redirected URL if it was
+    :: (Yesod site)
+    => YesodExample site (Either T.Text T.Text) -- ^ 'Left' with an error message if not a redirect, 'Right' with the redirected URL if it was
 followRedirect = do
   mr <- getResponse
   case mr of
@@ -1255,7 +1255,7 @@ followRedirect = do
 -- > (Right (ResourceR resourceId)) <- getLocation
 --
 -- @since 1.5.4
-getLocation :: (ParseRoute site, MonadIO m, MonadState (YesodExampleData site) m) => m (Either T.Text (Route site))
+getLocation :: (ParseRoute site) => YesodExample site (Either T.Text (Route site))
 getLocation = do
   mr <- getResponse
   case mr of
@@ -1322,7 +1322,7 @@ setUrl url' = do
 -- > clickOn "a#idofthelink"
 --
 -- @since 1.5.7
-clickOn :: (HasCallStack, Yesod site, MonadIO m, MonadState (YesodExampleData site) m) => Query -> m ()
+clickOn :: (HasCallStack, Yesod site) => Query -> YesodExample site ()
 clickOn query = do
   withResponse' yedResponse ["Tried to invoke clickOn in order to read HTML of a previous response."] $ \ res ->
     case YT.CSS.findAttributeBySelector (simpleBody res) query "href" of
@@ -1372,7 +1372,7 @@ addBasicAuthHeader username password =
   let credentials = convertToBase Base64 $ CI.original $ username <> ":" <> password
   in addRequestHeader ("Authorization", "Basic " <> credentials)
 
-mkApplication :: (MonadState (YesodExampleData site) m, MonadIO m) => m Application
+mkApplication :: YesodExample site Application
 mkApplication = do
     mkApp <- MS.gets yedApp
     site <- MS.gets yedSite
@@ -1391,9 +1391,8 @@ mkApplication = do
 -- >   byLabel "First Name" "Felipe"
 -- >   setMethod "PUT"
 -- >   setUrl NameR
-request :: (MonadIO m, MonadState (YesodExampleData site) m)
-        => RequestBuilder site ()
-        -> m ()
+request :: RequestBuilder site ()
+        -> YesodExample site ()
 request reqBuilder = do
     app <- mkApplication
     site <- MS.gets yedSite
