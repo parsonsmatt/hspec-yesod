@@ -1172,7 +1172,7 @@ getRequestCookies = do
 -- ==== __Examples__
 --
 -- > post HomeR
-post :: (YesodDispatch site, RedirectUrl site url)
+post :: (Yesod site, RedirectUrl site url)
      => url
      -> YesodExample site ()
 post = performMethod "POST"
@@ -1185,7 +1185,7 @@ post = performMethod "POST"
 --
 -- > import Data.Aeson
 -- > postBody HomeR (encode $ object ["age" .= (1 :: Integer)])
-postBody :: (YesodDispatch site, RedirectUrl site url)
+postBody :: (Yesod site, RedirectUrl site url)
          => url
          -> BSL8.ByteString
          -> YesodExample site ()
@@ -1201,7 +1201,7 @@ postBody url body = request $ do
 -- > get HomeR
 --
 -- > get ("http://google.com" :: Text)
-get :: (YesodDispatch site, RedirectUrl site url)
+get :: (Yesod site, RedirectUrl site url)
     => url
     -> YesodExample site ()
 get = performMethod "GET"
@@ -1214,7 +1214,7 @@ get = performMethod "GET"
 --
 -- > performMethod "DELETE" HomeR
 performMethod
-    :: (YesodDispatch site, RedirectUrl site url)
+    :: (Yesod site, RedirectUrl site url)
     => ByteString
     -> url
     -> YesodExample site ()
@@ -1231,7 +1231,7 @@ performMethod method url = request $ do
 -- > get HomeR
 -- > followRedirect
 followRedirect
-    :: (YesodDispatch site)
+    :: (Yesod site)
     => YesodExample site (Either T.Text T.Text) -- ^ 'Left' with an error message if not a redirect, 'Right' with the redirected URL if it was
 followRedirect = do
   mr <- getResponse
@@ -1321,7 +1321,7 @@ setUrl url' = do
 -- > clickOn "a#idofthelink"
 --
 -- @since 1.5.7
-clickOn :: (HasCallStack, YesodDispatch site) => Query -> YesodExample site ()
+clickOn :: (HasCallStack, Yesod site) => Query -> YesodExample site ()
 clickOn query = do
   withResponse' yedResponse ["Tried to invoke clickOn in order to read HTML of a previous response."] $ \ res ->
     case YT.CSS.findAttributeBySelector (simpleBody res) query "href" of
