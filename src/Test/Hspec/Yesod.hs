@@ -121,7 +121,6 @@ module Test.Hspec.Yesod
     , YesodSpec
     , yesodSpecWithSiteGenerator
     , yesodSpecWithSiteGeneratorAndArgument
-    -- , yesodSpecApp
     , YesodExample
     , YesodExampleData(..)
     , TestApp (..)
@@ -435,25 +434,6 @@ ybeforeWith
 ybeforeWith mkAction =
     beforeWith $ \(yed, a) ->
         runSIO (unYesodExample (mkAction a)) yed
-
--- Same as yesodSpec, but instead of taking a site it
--- takes an action which produces the 'Application' for each test.
--- This lets you use your middleware from makeApplication
--- yesodSpecApp
---     :: YesodDispatch site
---     => site
---     -> IO Application
---     -> YesodSpec site
---     -> Spec
--- yesodSpecApp site getApp =
---     before $ do
---         pure YesodExampleData
---             { yedCreateApplication = const getApp
---             , yedSite = site
---             , yedCookies = M.empty
---             , yedResponse = Nothing
---             , yedTestCleanup = pure ()
---             }
 
 -- | Describe a single test that keeps cookies, and a reference to the last response.
 yit :: (HasCallStack) => String -> YesodExample site () -> YesodSpec site
