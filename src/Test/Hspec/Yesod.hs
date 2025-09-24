@@ -219,6 +219,9 @@ module Test.Hspec.Yesod
 
     -- * Grab information
     , getTestYesod
+    , getLatestRequest
+    , requireLatestRequest
+    , formatRequestBuilderDataForDebugging
     , getResponse
     , getRequestCookies
 
@@ -278,6 +281,7 @@ import Yesod.Test.TransversingCSS (HtmlLBS, Query)
 import qualified Yesod.Test.Internal.SIO as YT.SIO
 import Yesod.Test.Internal.SIO (SIO, execSIO, runSIO)
 import qualified Yesod.Test.Internal as YT.Internal (getBodyTextPreview, contentTypeHeaderIsUtf8)
+import Test.Hspec.Yesod.Internal
 
 -- | The state used in a single test case defined using 'yit'
 --
@@ -287,6 +291,7 @@ data YesodExampleData site = YesodExampleData
     , yedMiddleware :: !Middleware
     , yedSite :: !site
     , yedCookies :: !Cookies
+    , yedRequest :: !(Maybe (RequestBuilderData site))
     , yedResponse :: !(Maybe SResponse)
     , yedTestCleanup :: !(IO ())
     }
@@ -317,29 +322,30 @@ type YesodSpecWith site r = SpecWith (YesodExampleData site, r)
 getTestYesod :: YesodExample site site
 getTestYesod = fmap yedSite MS.get
 
+-- | Get the most recently provided request value, if available.
+--
+-- This is intended to allow assertions to add context on the request in their error messages.
+-- Currently the contents of RequestBuilderData are only accessible via Test.Hspec.Yesod.Internal and formatRequestBuilderDataForDebugging.
+--
+-- @since 0.2.0
+getLatestRequest :: YesodExample site (Maybe (RequestBuilderData site))
+getLatestRequest = fmap yedRequest MS.get
+
+-- | Like 'getLatestRequest', but throws an error if no request has been made.
+--
+-- @since 0.2.0
+requireLatestRequest :: YesodExample site (RequestBuilderData site)
+requireLatestRequest = do
+  mRequest <- getLatestRequest
+  case mRequest of
+    Nothing -> failure "Called requireLatestRequest, but no request has been made"
+    Just r -> pure r
+
 -- | Get the most recently provided response value, if available.
 --
 -- Since 1.2.0
 getResponse :: YesodExample site (Maybe SResponse)
 getResponse = fmap yedResponse MS.get
-
-data RequestBuilderData site = RequestBuilderData
-    { rbdPostData :: RBDPostData
-    , rbdResponse :: (Maybe SResponse)
-    , rbdMethod :: H.Method
-    , rbdSite :: site
-    , rbdPath :: [T.Text]
-    , rbdGets :: H.Query
-    , rbdHeaders :: H.RequestHeaders
-    }
-
-data RBDPostData = MultipleItemsPostData [RequestPart]
-                 | BinaryPostData BSL8.ByteString
-
--- | Request parts let us discern regular key/values from files sent in the request.
-data RequestPart
-  = ReqKvPart T.Text T.Text
-  | ReqFilePart T.Text FilePath BSL8.ByteString T.Text
 
 -- | The 'RequestBuilder' state monad constructs a URL encoded string of arguments
 -- to send with your requests. Some of the functions that run on it use the current
@@ -362,6 +368,7 @@ yesodSpec site =
             , yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
+            , yedRequest = Nothing
             , yedResponse = Nothing
             , yedTestCleanup = pure ()
             }
@@ -393,6 +400,7 @@ yesodSpecWithSiteGeneratorAndArgument getSiteAction =
             , yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
+            , yedRequest = Nothing
             , yedResponse = Nothing
             , yedTestCleanup = pure ()
             }
@@ -591,6 +599,7 @@ assertEqualNoShow msg a b = liftIO $ HUnit.assertBool msg (a == b)
 -- > statusIs 200
 statusIs :: HasCallStack => Int -> YesodExample site ()
 statusIs number = do
+  latestRequest <- requireLatestRequest
   withResponse $ \(SResponse status headers body) -> do
     let mContentType = lookup hContentType headers
         isUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mContentType
@@ -598,6 +607,7 @@ statusIs number = do
     liftIO $ flip HUnit.assertBool (H.statusCode status == number) $ concat
       [ "Expected status was ", show number
       , " but received status was ", show $ H.statusCode status
+      , " for " <> (T.unpack $ formatRequestBuilderDataForDebugging latestRequest)
       , if isUTF8ContentType
           then ". For debugging, the body was: " <> (T.unpack $ YT.Internal.getBodyTextPreview body)
           else ""
@@ -1359,6 +1369,22 @@ mkApplication :: YesodExample site Application
 mkApplication = do
     liftIO . yesodExampleDataToApplication =<< MS.get
 
+-- | Provides a helpful summary of the request, meant to be used in assertion functions
+--
+-- Currently formats as METHOD PATH?QUERY, e.g. GET /foo/bar?q=true
+-- The exact format is subject to change.
+--
+-- @since 0.2.0
+formatRequestBuilderDataForDebugging :: RequestBuilderData site -> T.Text
+formatRequestBuilderDataForDebugging RequestBuilderData{..} =
+    (TE.decodeUtf8 rbdMethod) <> " " <> getEncodedPath rbdPath <> (TE.decodeUtf8 $ H.renderQuery True rbdGets)
+
+getEncodedPath :: [T.Text] -> T.Text
+getEncodedPath pathSegments = 
+    if null pathSegments 
+        then "/"
+        else TE.decodeUtf8 $ Builder.toByteString $ H.encodePathSegments pathSegments
+
 -- | The general interface for performing requests. 'request' takes a 'RequestBuilder',
 -- constructs a request, and executes it.
 --
@@ -1381,7 +1407,7 @@ request reqBuilder = do
     mRes <- MS.gets yedResponse
     oldCookies <- MS.gets yedCookies
 
-    RequestBuilderData {..} <- liftIO $ execSIO reqBuilder RequestBuilderData
+    rbd@RequestBuilderData {..} <- liftIO $ execSIO reqBuilder RequestBuilderData
       { rbdPostData = MultipleItemsPostData []
       , rbdResponse = mRes
       , rbdMethod = "GET"
@@ -1390,9 +1416,7 @@ request reqBuilder = do
       , rbdGets = []
       , rbdHeaders = []
       }
-    let path
-            | null rbdPath = "/"
-            | otherwise = TE.decodeUtf8 $ Builder.toByteString $ H.encodePathSegments rbdPath
+    let path = getEncodedPath rbdPath
 
     -- expire cookies and filter them for the current path. TODO: support max age
     currentUtc <- liftIO getCurrentTime
@@ -1421,7 +1445,7 @@ request reqBuilder = do
         }) app
     let newCookies = parseSetCookies $ simpleHeaders response
         cookies' = M.fromList [(Cookie.setCookieName c, c) | c <- newCookies] `M.union` cookies
-    modify $ \e -> e { yedCookies = cookies', yedResponse = Just response }
+    modify $ \e -> e { yedCookies = cookies', yedRequest = Just rbd, yedResponse = Just response }
   where
     isFile (ReqFilePart _ _ _ _) = True
     isFile _ = False
@@ -1545,6 +1569,7 @@ siteToYesodExampleData site =
         , yedMiddleware = id
         , yedSite = site
         , yedCookies = M.empty
+        , yedRequest = Nothing
         , yedResponse = Nothing
         , yedTestCleanup = pure ()
         }

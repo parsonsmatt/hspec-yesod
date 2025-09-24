@@ -502,6 +502,12 @@ main = hspec $ do
             get ("get-json-response" :: Text)
             statusIs 200
             (requireJSONResponse :: YesodExample site [Text]) `liftedShouldThrow` (\(e :: SomeException) -> True)
+    describe "foo" $ yesodSpec app $ do
+        yit "checks for a json array" $ do
+            request $ do
+                setUrl ("checkBasicAuth" :: Text)
+                addGetParam "key" "value"
+            statusIs 200
 
 instance RenderMessage LiteApp FormMessage where
     renderMessage _ _ = defaultFormMessage
