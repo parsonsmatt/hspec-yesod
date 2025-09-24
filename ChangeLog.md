@@ -1,5 +1,11 @@
 # ChangeLog for hspec-yesod
 
+## 0.2.0.1
+
+- Fixes unused import warnings in `Test.Hspec.Yesod.Internal`
+- `statusIs` now also prints the first 1024 characters of the request body, in certain circumstances.
+- `statusIs` output broken across multiple lines
+
 ## 0.2.0
 
 - `statusIs` now prints the request method, path, and query string on failing requests
