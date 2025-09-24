@@ -1397,16 +1397,13 @@ mkApplication = do
 
 -- | Provides a helpful summary of the request, meant to be used in assertion functions
 --
--- Currently formats as METHOD PATH?QUERY [body]: BODY, e.g. GET /foo/bar?q=true [body]: {"k": "v"}
+-- Currently formats as METHOD PATH?QUERY, e.g. GET /foo/bar?q=true
 -- The exact format is subject to change.
---
--- Printing the body is not supported for POST params ('addPostParam'), only for 'setRequestBody'
--- and only if the request content type is printable as UTF-8 (JSON, XML, etc., but not JPEG).
 --
 -- @since 0.2.0
 formatRequestBuilderDataForDebugging :: RequestBuilderData site -> T.Text
 formatRequestBuilderDataForDebugging RequestBuilderData{..} =
-    TE.decodeUtf8 rbdMethod <> " " <> getEncodedPath rbdPath <> (TE.decodeUtf8 $ H.renderQuery True rbdGets)
+    (TE.decodeUtf8 rbdMethod) <> " " <> getEncodedPath rbdPath <> (TE.decodeUtf8 $ H.renderQuery True rbdGets)
 
 getEncodedPath :: [T.Text] -> T.Text
 getEncodedPath pathSegments = 
