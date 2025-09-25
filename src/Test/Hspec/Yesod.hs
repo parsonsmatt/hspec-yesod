@@ -591,7 +591,7 @@ assertEqualNoShow :: (HasCallStack, Eq a, MonadIO m) => String -> a -> a -> m ()
 assertEqualNoShow msg a b = liftIO $ HUnit.assertBool msg (a == b)
 
 -- | Assert the last response status is as expected.
--- If the status code doesn't match, a portion of the body is also printed to aid in debugging.
+-- If the status code doesn't match, the request and a portion of the body is also printed to aid in debugging.
 --
 -- ==== __Examples__
 --
@@ -601,17 +601,43 @@ statusIs :: HasCallStack => Int -> YesodExample site ()
 statusIs number = do
   latestRequest <- requireLatestRequest
   withResponse $ \(SResponse status headers body) -> do
-    let mContentType = lookup hContentType headers
-        isUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mContentType
+    let mResponseContentType = lookup hContentType headers
+        isResponseUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mResponseContentType
 
-    liftIO $ flip HUnit.assertBool (H.statusCode status == number) $ concat
-      [ "Expected status was ", show number
-      , " but received status was ", show $ H.statusCode status
-      , " for " <> (T.unpack $ formatRequestBuilderDataForDebugging latestRequest)
-      , if isUTF8ContentType
-          then ". For debugging, the body was: " <> (T.unpack $ YT.Internal.getBodyTextPreview body)
-          else ""
+        responsePreview = T.unpack $ YT.Internal.getBodyTextPreview body
+        previewFinal = if responsePreview == "" then "<empty response>" else 
+                if isResponseUTF8ContentType then T.unpack $ YT.Internal.getBodyTextPreview body
+                    else "<content-type not suitable for printing>"
+
+    liftIO $ flip HUnit.assertBool (H.statusCode status == number) $ unlines
+      [ "Expected status: " <> show number
+      , "But status was: " <> (show $ H.statusCode status)
+      , "Request: " <> (T.unpack $ formatRequestBuilderDataForDebugging latestRequest)
+      , "Request body: " <> (T.unpack $ getRequestBodyPreview latestRequest)
+      , "Response body: " <> previewFinal
       ]
+
+  where
+    getRequestBodyPreview :: RequestBuilderData site -> T.Text
+    getRequestBodyPreview RequestBuilderData{..} = 
+        let mRequestContentType = lookup hContentType rbdHeaders
+            isRequestUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mRequestContentType
+        in case rbdPostData of
+                    MultipleItemsPostData xs -> case xs of
+                        [] -> "<empty body>"
+                        _ -> "<POST param preview not supported>"
+                    BinaryPostData lbs -> if isRequestUTF8ContentType then 
+                        getRequestTextPreview lbs
+                        else "<empty body>"
+
+    getRequestTextPreview :: BSL8.ByteString -> T.Text
+    getRequestTextPreview body =
+      let characterLimit = 1024
+          textBody = TL.toStrict $ decodeUtf8 body
+      in if T.length textBody < characterLimit
+            then textBody
+            else T.take characterLimit textBody <> "... (use `rbdPostData` from `yedRequest` to see complete request body)"
+
 
 -- | Assert the given header key/value pair was returned.
 --
