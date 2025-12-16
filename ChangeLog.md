@@ -2,7 +2,8 @@
 
 ## 0.2.1.0
 
-- The function `testModifySite` is deprecated and replaced with `testModifyMiddleware`, `testModifyFoundation`, and `testModifyFoundationAndMiddleware`.
+- [#6](https://github.com/parsonsmatt/hspec-yesod/pull/6)
+  - The function `testModifySite` is deprecated and replaced with `testModifyMiddleware`, `testModifyFoundation`, and `testModifyFoundationAndMiddleware`.
 
 ## 0.2.0.1
 
