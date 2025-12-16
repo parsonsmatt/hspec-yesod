@@ -1,5 +1,5 @@
 name:               hspec-yesod
-version:            0.2.0.1
+version:            0.2.1.0
 license:            MIT
 license-file:       LICENSE
 author:             Nubis <nubis@woobiz.com.ar>, Matt Parsons <parsonsmatt@gmail.com>

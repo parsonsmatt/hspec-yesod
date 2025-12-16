@@ -1,5 +1,10 @@
 # ChangeLog for hspec-yesod
 
+## 0.2.1.0
+
+- [#6](https://github.com/parsonsmatt/hspec-yesod/pull/6)
+  - The function `testModifySite` is deprecated and replaced with `testModifyMiddleware`, `testModifyFoundation`, and `testModifyFoundationAndMiddleware`.
+
 ## 0.2.0.1
 
 - Fixes unused import warnings in `Test.Hspec.Yesod.Internal`
