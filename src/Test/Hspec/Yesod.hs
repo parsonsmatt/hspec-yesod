@@ -137,6 +137,9 @@ module Test.Hspec.Yesod
 
     -- * Modify test site
     , testModifySite
+    , testModifyFoundation
+    , testModifyMiddleware
+    , testModifyFoundationAndMiddleware
 
     -- * Modify test state
     , testSetCookie
@@ -471,13 +474,65 @@ yit = it
 testModifySite
     :: (site -> IO (site, Middleware)) -- ^ A function from the existing site, to a new site and middleware for a WAI app.
     -> YesodExample site ()
-testModifySite newSiteFn = do
-  currentSite <- getTestYesod
-  (newSite, middleware) <- liftIO $ newSiteFn currentSite
-  modify $ \yed -> yed
-    { yedSite = newSite
-    , yedMiddleware = middleware
-    }
+testModifySite newSiteFn =
+    testModifyFoundationAndMiddleware $ \site _ -> do
+        newSiteFn site
+
+{-# DEPRECATED testModifySite
+   [ "This function throws away the prior Middleware, which can break assumptions in tests."
+   , "If you want this behavior, see 'testModifyMiddleware' which will allow you to modify the middleware directly."
+   , "If you do not, see 'testModifyFoundation' which does not impact Middleware."
+   ]
+  #-}
+
+-- | Modify the site's 'Middleware' for the remainder of the tests.
+--
+-- @since 0.2.1.0
+testModifyMiddleware
+    :: (Middleware -> IO Middleware)
+    -> YesodExample site ()
+testModifyMiddleware mkNewMiddleware =
+    testModifyFoundationAndMiddleware $ \site middleware -> do
+        newMiddleware <- mkNewMiddleware middleware
+        pure (site, newMiddleware)
+
+-- | Modify the @site@ without altering the 'Middleware'.
+--
+-- @since 0.2.1.0
+testModifyFoundation
+    :: (site -> IO site)
+    -> YesodExample site ()
+testModifyFoundation mkNewSite =
+    testModifyFoundationAndMiddleware $ \site middleware -> do
+        newSite <- mkNewSite site
+        pure (newSite, middleware)
+
+-- | Modify the @site@ and the 'Middleware' under test for the remainder of
+-- the test.
+--
+-- In rare cases, you may wish to modify that application in the middle of a test.
+-- This may be useful if you wish to, for example, test your application under a certain configuration,
+-- then change that configuration to see if your app responds differently.
+--
+-- ==== __Examples__
+--
+-- > post SendEmailR
+-- > -- Assert email not created in database
+-- > post SendEmailR
+-- > -- Assert email created in database
+--
+-- > testModifyFoundationAndMiddleware (\site middleware -> do
+-- >   pure (site { appRedisConnection = Nothing }, middleware)
+-- > )
+-- @since 0.2.1.0
+testModifyFoundationAndMiddleware
+    :: (site -> Middleware -> IO (site, Middleware))
+    -> YesodExample site ()
+testModifyFoundationAndMiddleware mkNewSiteAndMiddleware = do
+    currentSite <- gets yedSite
+    currentMiddleware <- gets yedMiddleware
+    (newSite, newMiddleware) <- liftIO $ mkNewSiteAndMiddleware currentSite currentMiddleware
+    modify $ \yed -> yed { yedSite = newSite, yedMiddleware = newMiddleware }
 
 -- | Sets a cookie
 --
@@ -605,7 +660,7 @@ statusIs number = do
         isResponseUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mResponseContentType
 
         responsePreview = T.unpack $ YT.Internal.getBodyTextPreview body
-        previewFinal = if responsePreview == "" then "<empty response>" else 
+        previewFinal = if responsePreview == "" then "<empty response>" else
                 if isResponseUTF8ContentType then T.unpack $ YT.Internal.getBodyTextPreview body
                     else "<content-type not suitable for printing>"
 
@@ -619,14 +674,14 @@ statusIs number = do
 
   where
     getRequestBodyPreview :: RequestBuilderData site -> T.Text
-    getRequestBodyPreview RequestBuilderData{..} = 
+    getRequestBodyPreview RequestBuilderData{..} =
         let mRequestContentType = lookup hContentType rbdHeaders
             isRequestUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mRequestContentType
         in case rbdPostData of
                     MultipleItemsPostData xs -> case xs of
                         [] -> "<empty body>"
                         _ -> "<POST param preview not supported>"
-                    BinaryPostData lbs -> if isRequestUTF8ContentType then 
+                    BinaryPostData lbs -> if isRequestUTF8ContentType then
                         getRequestTextPreview lbs
                         else "<empty body>"
 
@@ -1406,8 +1461,8 @@ formatRequestBuilderDataForDebugging RequestBuilderData{..} =
     (TE.decodeUtf8 rbdMethod) <> " " <> getEncodedPath rbdPath <> (TE.decodeUtf8 $ H.renderQuery True rbdGets)
 
 getEncodedPath :: [T.Text] -> T.Text
-getEncodedPath pathSegments = 
-    if null pathSegments 
+getEncodedPath pathSegments =
+    if null pathSegments
         then "/"
         else TE.decodeUtf8 $ Builder.toByteString $ H.encodePathSegments pathSegments
 
