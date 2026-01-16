@@ -1485,7 +1485,6 @@ request
     :: RequestBuilder url site ()
     -> YesodExample site ()
 request reqBuilder = do
-    app <- mkApplication
     site <- MS.gets yedSite
     mRes <- MS.gets yedResponse
     oldCookies <- MS.gets yedCookies
@@ -1500,28 +1499,29 @@ request reqBuilder = do
       , rbdHeaders = []
       , rbdUrl = Nothing
       }
+
     let path = getEncodedPath rbdPath
+
+    app <- mkApplicationFor rbd
 
     -- expire cookies and filter them for the current path. TODO: support max age
     currentUtc <- liftIO getCurrentTime
     let cookies = M.filter (checkCookieTime currentUtc) oldCookies
         cookiesForPath = M.filter (checkCookiePath path) cookies
 
-    let req = case rbdPostData of
-          MultipleItemsPostData x ->
-            if DL.any isFile x
-            then (multipart x)
-            else singlepart
-          BinaryPostData _ -> singlepart
-          where singlepart = makeSinglepart cookiesForPath rbdPostData rbdMethod rbdHeaders path rbdGets
-                multipart x = makeMultipart cookiesForPath x rbdMethod rbdHeaders path rbdGets
-    -- let maker = case rbdPostData of
-    --       MultipleItemsPostData x ->
-    --         if DL.any isFile x
-    --         then makeMultipart
-    --         else makeSinglepart
-    --       BinaryPostData _ -> makeSinglepart
-    -- let req = maker cookiesForPath rbdPostData rbdMethod rbdHeaders path rbdGets
+    let req =
+            case rbdPostData of
+                MultipleItemsPostData x ->
+                    if DL.any isFile x
+                    then (multipart x)
+                    else singlepart
+                BinaryPostData _ -> singlepart
+          where
+            singlepart =
+                makeSinglepart cookiesForPath rbdPostData rbdMethod rbdHeaders path rbdGets
+            multipart x =
+                makeMultipart cookiesForPath x rbdMethod rbdHeaders path rbdGets
+
     response <- liftIO $ runSession (srequest req
         { simpleRequest = (simpleRequest req)
             { httpVersion = H.http11
@@ -1624,6 +1624,34 @@ request reqBuilder = do
       , queryString = urlQuery
       }
 
+-- TODO: OK, this is the tricky part.
+--
+-- Based on @url@ type variable, we need to produce an 'Application'
+-- capable of handling that. Upstream gives us 'toWaiAppPlain'' which
+-- *does* this - but it requires @'YesodDispatchNested' url@, which is
+-- a problem: nominally, the current interface supports @url@ of type
+-- 'Text' via the 'RedirectUrl' class. Indeed the actual 'setUrl' logic
+-- calls that to produce a 'Text' value, and the 'RedirectUrl' instances
+-- for 'Text' is merely 'return'.
+--
+-- @yesod-core@ can make instances of 'RedirectUrl' for route fragment
+-- types. So that lets us reuse most of the same logic for generating the
+-- path fragment. But then we need. uh. a weird class. like.
+--
+-- > type TypeToDispatch :: Type -> Type -> Constraint
+-- > type family TypeToDispatch a site where
+-- >     TypeToDispatch Text site = YesodDispatch site
+-- >     TypeToDispatch (Route site) site' = (YesodDispatch site, site ~ site')
+-- >     TypeToDispatch route site = (YesodDispatchNested route, ParentSite route ~ site)
+--
+-- But just having the constraint around doesn't mean we know what to *do*
+-- with it... so that means we require a *class* with *instances* and
+-- that's open and oof.
+mkApplicationFor
+    :: (MonadIO m, _)
+    => RequestBuilderData url site
+    -> m Application
+mkApplicationFor rbd = error "TODO"
 
 parseSetCookies :: [H.Header] -> [Cookie.SetCookie]
 parseSetCookies headers = map (Cookie.parseSetCookie . snd) $ DL.filter (("Set-Cookie"==) . fst) $ headers
