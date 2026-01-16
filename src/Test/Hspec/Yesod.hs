@@ -1,4 +1,5 @@
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DerivingStrategies, GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -294,7 +295,7 @@ data YesodExampleData site = YesodExampleData
     , yedMiddleware :: !Middleware
     , yedSite :: !site
     , yedCookies :: !Cookies
-    , yedRequest :: !(Maybe (RequestBuilderData site))
+    , yedRequest :: !(Maybe (RequestBuilderData () site))
     , yedResponse :: !(Maybe SResponse)
     , yedTestCleanup :: !(IO ())
     }
@@ -331,13 +332,13 @@ getTestYesod = fmap yedSite MS.get
 -- Currently the contents of RequestBuilderData are only accessible via Test.Hspec.Yesod.Internal and formatRequestBuilderDataForDebugging.
 --
 -- @since 0.2.0
-getLatestRequest :: YesodExample site (Maybe (RequestBuilderData site))
+getLatestRequest :: YesodExample site (Maybe (RequestBuilderData () site))
 getLatestRequest = fmap yedRequest MS.get
 
 -- | Like 'getLatestRequest', but throws an error if no request has been made.
 --
 -- @since 0.2.0
-requireLatestRequest :: YesodExample site (RequestBuilderData site)
+requireLatestRequest :: YesodExample site (RequestBuilderData () site)
 requireLatestRequest = do
   mRequest <- getLatestRequest
   case mRequest of
@@ -353,7 +354,7 @@ getResponse = fmap yedResponse MS.get
 -- | The 'RequestBuilder' state monad constructs a URL encoded string of arguments
 -- to send with your requests. Some of the functions that run on it use the current
 -- response to analyze the forms that the server is expecting to receive.
-type RequestBuilder site = YT.SIO.SIO (RequestBuilderData site)
+type RequestBuilder url site = YT.SIO.SIO (RequestBuilderData url site)
 
 -- | Start describing a Tests suite keeping cookies and a reference to the tested 'Application'
 -- and 'ConnectionPool'
@@ -673,7 +674,7 @@ statusIs number = do
       ]
 
   where
-    getRequestBodyPreview :: RequestBuilderData site -> T.Text
+    getRequestBodyPreview :: RequestBuilderData url site -> T.Text
     getRequestBodyPreview RequestBuilderData{..} =
         let mRequestContentType = lookup hContentType rbdHeaders
             isRequestUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mRequestContentType
@@ -926,7 +927,7 @@ printMatches query = do
 -- > {-# LANGUAGE OverloadedStrings #-}
 -- > post $ do
 -- >   addPostParam "key" "value"
-addPostParam :: T.Text -> T.Text -> RequestBuilder site ()
+addPostParam :: T.Text -> T.Text -> RequestBuilder url site ()
 addPostParam name value =
   YT.SIO.modifySIO $ \rbd -> rbd { rbdPostData = (addPostData (rbdPostData rbd)) }
   where addPostData (BinaryPostData _) = error "Trying to add post param to binary content."
@@ -940,7 +941,7 @@ addPostParam name value =
 -- > {-# LANGUAGE OverloadedStrings #-}
 -- > request $ do
 -- >   addGetParam "key" "value" -- Adds ?key=value to the URL
-addGetParam :: T.Text -> T.Text -> RequestBuilder site ()
+addGetParam :: T.Text -> T.Text -> RequestBuilder url site ()
 addGetParam name value = YT.SIO.modifySIO $ \rbd -> rbd
     { rbdGets = (TE.encodeUtf8 name, Just $ TE.encodeUtf8 value)
               : rbdGets rbd
@@ -957,7 +958,7 @@ addGetParam name value = YT.SIO.modifySIO $ \rbd -> rbd
 addFile :: T.Text -- ^ The parameter name for the file.
         -> FilePath -- ^ The path to the file.
         -> T.Text -- ^ The MIME type of the file, e.g. "image/png".
-        -> RequestBuilder site ()
+        -> RequestBuilder url site ()
 addFile name path mimetype = do
   contents <- liftIO $ BSL8.readFile path
   YT.SIO.modifySIO $ \rbd -> rbd { rbdPostData = (addPostData (rbdPostData rbd) contents) }
@@ -967,7 +968,7 @@ addFile name path mimetype = do
 
 -- |
 -- This looks up the name of a field based on the contents of the label pointing to it.
-genericNameFromLabel :: HasCallStack => (T.Text -> T.Text -> Bool) -> T.Text -> RequestBuilder site T.Text
+genericNameFromLabel :: HasCallStack => (T.Text -> T.Text -> Bool) -> T.Text -> RequestBuilder url site T.Text
 genericNameFromLabel match label = do
   mres <- fmap rbdResponse YT.SIO.getSIO
   res <-
@@ -1009,7 +1010,7 @@ genericNameFromLabel match label = do
 byLabelWithMatch :: (T.Text -> T.Text -> Bool) -- ^ The matching method which is used to find labels (i.e. exact, contains)
                  -> T.Text                     -- ^ The text contained in the @\<label>@.
                  -> T.Text                     -- ^ The value to set the parameter to.
-                 -> RequestBuilder site ()
+                 -> RequestBuilder url site ()
 byLabelWithMatch match label value = do
   name <- genericNameFromLabel match label
   addPostParam name value
@@ -1043,7 +1044,7 @@ byLabelWithMatch match label value = do
 -- @since 1.5.9
 byLabelExact :: T.Text -- ^ The text in the @\<label>@.
              -> T.Text -- ^ The value to set the parameter to.
-             -> RequestBuilder site ()
+             -> RequestBuilder url site ()
 byLabelExact = byLabelWithMatch (==)
 
 -- |
@@ -1054,7 +1055,7 @@ byLabelExact = byLabelWithMatch (==)
 -- @since 1.6.2
 byLabelContain :: T.Text -- ^ The text in the @\<label>@.
                -> T.Text -- ^ The value to set the parameter to.
-               -> RequestBuilder site ()
+               -> RequestBuilder url site ()
 byLabelContain = byLabelWithMatch T.isInfixOf
 
 -- |
@@ -1065,7 +1066,7 @@ byLabelContain = byLabelWithMatch T.isInfixOf
 -- @since 1.6.2
 byLabelPrefix :: T.Text -- ^ The text in the @\<label>@.
               -> T.Text -- ^ The value to set the parameter to.
-              -> RequestBuilder site ()
+              -> RequestBuilder url site ()
 byLabelPrefix = byLabelWithMatch T.isPrefixOf
 
 -- |
@@ -1076,14 +1077,14 @@ byLabelPrefix = byLabelWithMatch T.isPrefixOf
 -- @since 1.6.2
 byLabelSuffix :: T.Text -- ^ The text in the @\<label>@.
               -> T.Text -- ^ The value to set the parameter to.
-              -> RequestBuilder site ()
+              -> RequestBuilder url site ()
 byLabelSuffix = byLabelWithMatch T.isSuffixOf
 
 fileByLabelWithMatch  :: (T.Text -> T.Text -> Bool) -- ^ The matching method which is used to find labels (i.e. exact, contains)
                       -> T.Text                     -- ^ The text contained in the @\<label>@.
                       -> FilePath                   -- ^ The path to the file.
                       -> T.Text                     -- ^ The MIME type of the file, e.g. "image/png".
-                      -> RequestBuilder site ()
+                      -> RequestBuilder url site ()
 fileByLabelWithMatch match label path mime = do
   name <- genericNameFromLabel match label
   addFile name path mime
@@ -1115,7 +1116,7 @@ fileByLabelWithMatch match label path mime = do
 fileByLabelExact :: T.Text -- ^ The text contained in the @\<label>@.
                  -> FilePath -- ^ The path to the file.
                  -> T.Text -- ^ The MIME type of the file, e.g. "image/png".
-                 -> RequestBuilder site ()
+                 -> RequestBuilder url site ()
 fileByLabelExact = fileByLabelWithMatch (==)
 
 -- |
@@ -1127,7 +1128,7 @@ fileByLabelExact = fileByLabelWithMatch (==)
 fileByLabelContain :: T.Text -- ^ The text contained in the @\<label>@.
                    -> FilePath -- ^ The path to the file.
                    -> T.Text -- ^ The MIME type of the file, e.g. "image/png".
-                   -> RequestBuilder site ()
+                   -> RequestBuilder url site ()
 fileByLabelContain = fileByLabelWithMatch T.isInfixOf
 
 -- |
@@ -1139,7 +1140,7 @@ fileByLabelContain = fileByLabelWithMatch T.isInfixOf
 fileByLabelPrefix :: T.Text -- ^ The text contained in the @\<label>@.
                   -> FilePath -- ^ The path to the file.
                   -> T.Text -- ^ The MIME type of the file, e.g. "image/png".
-                  -> RequestBuilder site ()
+                  -> RequestBuilder url site ()
 fileByLabelPrefix = fileByLabelWithMatch T.isPrefixOf
 
 -- |
@@ -1151,7 +1152,7 @@ fileByLabelPrefix = fileByLabelWithMatch T.isPrefixOf
 fileByLabelSuffix :: T.Text -- ^ The text contained in the @\<label>@.
                   -> FilePath -- ^ The path to the file.
                   -> T.Text -- ^ The MIME type of the file, e.g. "image/png".
-                  -> RequestBuilder site ()
+                  -> RequestBuilder url site ()
 fileByLabelSuffix = fileByLabelWithMatch T.isSuffixOf
 
 -- | Lookups the hidden input named "_token" and adds its value to the params.
@@ -1161,7 +1162,7 @@ fileByLabelSuffix = fileByLabelWithMatch T.isSuffixOf
 --
 -- > request $ do
 -- >   addToken_ "#formID"
-addToken_ :: HasCallStack => Query -> RequestBuilder site ()
+addToken_ :: HasCallStack => Query -> RequestBuilder url site ()
 addToken_ scope = do
   matches <- htmlQuery' rbdResponse ["Tried to get CSRF token with addToken'"] $ scope <> " input[name=_token][type=hidden][value]"
   case matches of
@@ -1175,7 +1176,7 @@ addToken_ scope = do
 --
 -- > request $ do
 -- >   addToken
-addToken :: HasCallStack => RequestBuilder site ()
+addToken :: HasCallStack => RequestBuilder url site ()
 addToken = addToken_ ""
 
 -- | Calls 'addTokenFromCookieNamedToHeaderNamed' with the 'defaultCsrfCookieName' and 'defaultCsrfHeaderName'.
@@ -1188,7 +1189,7 @@ addToken = addToken_ ""
 -- >   addTokenFromCookie
 --
 -- Since 1.4.3.2
-addTokenFromCookie :: HasCallStack => RequestBuilder site ()
+addTokenFromCookie :: HasCallStack => RequestBuilder url site ()
 addTokenFromCookie = addTokenFromCookieNamedToHeaderNamed defaultCsrfCookieName defaultCsrfHeaderName
 
 -- | Looks up the CSRF token stored in the cookie with the given name and adds it to the request headers. An error is thrown if the cookie can't be found.
@@ -1207,7 +1208,7 @@ addTokenFromCookie = addTokenFromCookieNamedToHeaderNamed defaultCsrfCookieName 
 addTokenFromCookieNamedToHeaderNamed :: HasCallStack
                                      => ByteString -- ^ The name of the cookie
                                      -> CI ByteString -- ^ The name of the header
-                                     -> RequestBuilder site ()
+                                     -> RequestBuilder url site ()
 addTokenFromCookieNamedToHeaderNamed cookieName headerName = do
   cookies <- getRequestCookies
   case M.lookup cookieName cookies of
@@ -1228,7 +1229,7 @@ addTokenFromCookieNamedToHeaderNamed cookieName headerName = do
 -- >   liftIO $ putStrLn $ "Cookies are: " ++ show cookies
 --
 -- Since 1.4.3.2
-getRequestCookies :: HasCallStack => RequestBuilder site Cookies
+getRequestCookies :: HasCallStack => RequestBuilder url site Cookies
 getRequestCookies = do
   requestBuilderData <- YT.SIO.getSIO
   headers <- case simpleHeaders Control.Applicative.<$> rbdResponse requestBuilderData of
@@ -1350,7 +1351,7 @@ getLocation = do
 -- > import Network.HTTP.Types.Method
 -- > request $ do
 -- >   setMethod methodPut
-setMethod :: H.Method -> RequestBuilder site ()
+setMethod :: H.Method -> RequestBuilder url site ()
 setMethod m = YT.SIO.modifySIO $ \rbd -> rbd { rbdMethod = m }
 
 -- | Sets the URL used by the request.
@@ -1364,7 +1365,7 @@ setMethod m = YT.SIO.modifySIO $ \rbd -> rbd { rbdMethod = m }
 -- >   setUrl ("http://google.com/" :: Text)
 setUrl :: (Yesod site, RedirectUrl site url)
        => url
-       -> RequestBuilder site ()
+       -> RequestBuilder url site ()
 setUrl url' = do
     site <- fmap rbdSite YT.SIO.getSIO
     eurl <- Yesod.Core.Unsafe.runFakeHandler
@@ -1381,6 +1382,7 @@ setUrl url' = do
                 ("https:":_:rest) -> rest
                 x -> x
         , rbdGets = rbdGets rbd ++ H.parseQuery (TE.encodeUtf8 urlQuery)
+        , rbdUrl = Just url'
         }
 
 
@@ -1412,7 +1414,7 @@ clickOn query = do
 -- > import Data.Aeson
 -- > request $ do
 -- >   setRequestBody $ encode $ object ["age" .= (1 :: Integer)]
-setRequestBody :: BSL8.ByteString -> RequestBuilder site ()
+setRequestBody :: BSL8.ByteString -> RequestBuilder url site ()
 setRequestBody body = YT.SIO.modifySIO $ \rbd -> rbd { rbdPostData = BinaryPostData body }
 
 -- | Adds the given header to the request; see "Network.HTTP.Types.Header" for creating 'Header's.
@@ -1422,7 +1424,7 @@ setRequestBody body = YT.SIO.modifySIO $ \rbd -> rbd { rbdPostData = BinaryPostD
 -- > import Network.HTTP.Types.Header
 -- > request $ do
 -- >   addRequestHeader (hUserAgent, "Chrome/41.0.2228.0")
-addRequestHeader :: H.Header -> RequestBuilder site ()
+addRequestHeader :: H.Header -> RequestBuilder url site ()
 addRequestHeader header = YT.SIO.modifySIO $ \rbd -> rbd
     { rbdHeaders = header : rbdHeaders rbd
     }
@@ -1437,7 +1439,7 @@ addRequestHeader header = YT.SIO.modifySIO $ \rbd -> rbd
 -- @since 1.6.7
 addBasicAuthHeader :: CI ByteString -- ^ Username
                    -> CI ByteString -- ^ Password
-                   -> RequestBuilder site ()
+                   -> RequestBuilder url site ()
 addBasicAuthHeader username password =
   let credentials = convertToBase Base64 $ CI.original $ username <> ":" <> password
   in addRequestHeader ("Authorization", "Basic " <> credentials)
@@ -1456,7 +1458,7 @@ mkApplication = do
 -- The exact format is subject to change.
 --
 -- @since 0.2.0
-formatRequestBuilderDataForDebugging :: RequestBuilderData site -> T.Text
+formatRequestBuilderDataForDebugging :: RequestBuilderData url site -> T.Text
 formatRequestBuilderDataForDebugging RequestBuilderData{..} =
     (TE.decodeUtf8 rbdMethod) <> " " <> getEncodedPath rbdPath <> (TE.decodeUtf8 $ H.renderQuery True rbdGets)
 
@@ -1480,7 +1482,7 @@ getEncodedPath pathSegments =
 -- >   setMethod "PUT"
 -- >   setUrl NameR
 request
-    :: RequestBuilder site ()
+    :: RequestBuilder url site ()
     -> YesodExample site ()
 request reqBuilder = do
     app <- mkApplication
@@ -1496,6 +1498,7 @@ request reqBuilder = do
       , rbdPath = []
       , rbdGets = []
       , rbdHeaders = []
+      , rbdUrl = Nothing
       }
     let path = getEncodedPath rbdPath
 
@@ -1526,7 +1529,11 @@ request reqBuilder = do
         }) app
     let newCookies = parseSetCookies $ simpleHeaders response
         cookies' = M.fromList [(Cookie.setCookieName c, c) | c <- newCookies] `M.union` cookies
-    modify $ \e -> e { yedCookies = cookies', yedRequest = Just rbd, yedResponse = Just response }
+    modify $ \e -> e
+        { yedCookies = cookies'
+        , yedRequest = Just $ voidRequestBuilderUrl rbd
+        , yedResponse = Just response
+        }
   where
     isFile (ReqFilePart _ _ _ _) = True
     isFile _ = False

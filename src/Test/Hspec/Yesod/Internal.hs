@@ -5,6 +5,7 @@ module Test.Hspec.Yesod.Internal
     ( RequestBuilderData(..)
     , RBDPostData(..)
     , RequestPart(..)
+    , voidRequestBuilderUrl
     ) where
 
 import qualified Data.Text as T
@@ -12,15 +13,22 @@ import qualified Data.ByteString.Lazy.Char8 as BSL8
 import qualified Network.HTTP.Types as H
 import Network.Wai.Test hiding (assertHeader, assertNoHeader, request)
 
-data RequestBuilderData site = RequestBuilderData
+data RequestBuilderData url site = RequestBuilderData
     { rbdPostData :: RBDPostData
     , rbdResponse :: (Maybe SResponse)
     , rbdMethod :: H.Method
     , rbdSite :: site
+    , rbdUrl :: Maybe url
     , rbdPath :: [T.Text]
     , rbdGets :: H.Query
     , rbdHeaders :: H.RequestHeaders
     }
+
+voidRequestBuilderUrl :: RequestBuilderData url site -> RequestBuilderData () site
+voidRequestBuilderUrl rbd =
+    rbd
+        { rbdUrl = Just ()
+        }
 
 data RBDPostData = MultipleItemsPostData [RequestPart]
                  | BinaryPostData BSL8.ByteString
