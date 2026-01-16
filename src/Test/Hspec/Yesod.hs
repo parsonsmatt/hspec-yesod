@@ -338,7 +338,7 @@ getLatestRequest = fmap yedRequest MS.get
 -- | Like 'getLatestRequest', but throws an error if no request has been made.
 --
 -- @since 0.2.0
-requireLatestRequest :: YesodExample site (RequestBuilderData () site)
+requireLatestRequest :: HasCallStack => YesodExample site (RequestBuilderData () site)
 requireLatestRequest = do
   mRequest <- getLatestRequest
   case mRequest of
