@@ -6,5 +6,5 @@ packages:
 
 extra-deps:
   - git: https://github.com/yesodweb/yesod.git
-    commit: 0dda5bf830a4b818697fc08794c17b6f7d68fd62
+    commit: da94c8ca2a4dbbb86681e1d7bf13b13fa8d3db11
     subdir: yesod-core
