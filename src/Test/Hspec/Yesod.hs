@@ -1244,7 +1244,7 @@ getRequestCookies = do
 -- ==== __Examples__
 --
 -- > post HomeR
-post :: (Yesod site, RedirectUrl site url)
+post :: (Yesod site, UrlToDispatch url site)
      => url
      -> YesodExample site ()
 post = performMethod "POST"
@@ -1257,7 +1257,7 @@ post = performMethod "POST"
 --
 -- > import Data.Aeson
 -- > postBody HomeR (encode $ object ["age" .= (1 :: Integer)])
-postBody :: (Yesod site, RedirectUrl site url)
+postBody :: (Yesod site, UrlToDispatch url site)
          => url
          -> BSL8.ByteString
          -> YesodExample site ()
@@ -1273,7 +1273,7 @@ postBody url body = request $ do
 -- > get HomeR
 --
 -- > get ("http://google.com" :: Text)
-get :: (Yesod site, RedirectUrl site url)
+get :: (Yesod site, UrlToDispatch url site)
     => url
     -> YesodExample site ()
 get = performMethod "GET"
@@ -1286,7 +1286,7 @@ get = performMethod "GET"
 --
 -- > performMethod "DELETE" HomeR
 performMethod
-    :: (Yesod site, RedirectUrl site url)
+    :: (Yesod site, UrlToDispatch url site)
     => ByteString
     -> url
     -> YesodExample site ()
@@ -1303,7 +1303,7 @@ performMethod method url = request $ do
 -- > get HomeR
 -- > followRedirect
 followRedirect
-    :: (Yesod site)
+    :: (YesodDispatch site)
     => YesodExample site (Either T.Text T.Text) -- ^ 'Left' with an error message if not a redirect, 'Right' with the redirected URL if it was
 followRedirect = do
   mr <- getResponse
@@ -1394,7 +1394,7 @@ setUrl url' = do
 -- > clickOn "a#idofthelink"
 --
 -- @since 1.5.7
-clickOn :: (HasCallStack, Yesod site) => Query -> YesodExample site ()
+clickOn :: (HasCallStack, YesodDispatch site) => Query -> YesodExample site ()
 clickOn query = do
   withResponse' yedResponse ["Tried to invoke clickOn in order to read HTML of a previous response."] $ \ res ->
     case YT.CSS.findAttributeBySelector (simpleBody res) query "href" of
@@ -1482,7 +1482,8 @@ getEncodedPath pathSegments =
 -- >   setMethod "PUT"
 -- >   setUrl NameR
 request
-    :: RequestBuilder url site ()
+    :: (UrlToDispatch url site, Yesod site)
+    => RequestBuilder url site ()
     -> YesodExample site ()
 request reqBuilder = do
     site <- MS.gets yedSite
@@ -1647,11 +1648,21 @@ request reqBuilder = do
 -- But just having the constraint around doesn't mean we know what to *do*
 -- with it... so that means we require a *class* with *instances* and
 -- that's open and oof.
+--
+-- and also, dang it, we need the ParentArgs!! So we're gonna have to have
+-- `WithParentArgs a` on that, not regular routes.
 mkApplicationFor
-    :: (MonadIO m, _)
+    :: (MonadIO m, UrlToDispatch url site, Yesod site)
     => RequestBuilderData url site
     -> m Application
-mkApplicationFor rbd = error "TODO"
+mkApplicationFor rbd = liftIO $ do
+    case rbdUrl rbd of
+        Nothing ->
+            failure "TODO: better error message"
+        Just url -> do
+            yre <- mkYesodRunnerEnv (rbdSite rbd)
+            pure $ urlToDispatch url yre
+
 
 parseSetCookies :: [H.Header] -> [Cookie.SetCookie]
 parseSetCookies headers = map (Cookie.parseSetCookie . snd) $ DL.filter (("Set-Cookie"==) . fst) $ headers
