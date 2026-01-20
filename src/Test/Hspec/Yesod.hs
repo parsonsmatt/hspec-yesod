@@ -175,6 +175,7 @@ module Test.Hspec.Yesod
     , RequestBuilder
     , SIO
     , setUrl
+    , setUrlNested
     , clickOn
 
     -- *** Adding fields by label
@@ -1385,6 +1386,16 @@ setUrl url' = do
         , rbdUrl = Just url'
         }
 
+-- | Set the URL of the request, specialized to a nested route fragment.
+--
+-- @since
+setUrlNested
+    :: (RedirectUrl site (WithParentArgs url), Yesod site)
+    => ParentArgs url
+    -> url
+    -> RequestBuilder (WithParentArgs url) site ()
+setUrlNested parentArgs url = setUrl (WithParentArgs parentArgs url)
+
 
 -- | Click on a link defined by a CSS query
 --
@@ -1443,14 +1454,6 @@ addBasicAuthHeader :: CI ByteString -- ^ Username
 addBasicAuthHeader username password =
   let credentials = convertToBase Base64 $ CI.original $ username <> ":" <> password
   in addRequestHeader ("Authorization", "Basic " <> credentials)
-
-yesodExampleDataToApplication :: YesodExampleData site -> IO Application
-yesodExampleDataToApplication YesodExampleData {..} =
-    yedCreateApplication yedSite yedMiddleware
-
-mkApplication :: YesodExample site Application
-mkApplication = do
-    liftIO . yesodExampleDataToApplication =<< MS.get
 
 -- | Provides a helpful summary of the request, meant to be used in assertion functions
 --
