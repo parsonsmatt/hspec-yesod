@@ -1,3 +1,11 @@
+{-# language TemplateHaskell #-}
+{-# language ViewPatterns #-}
+{-# language TypeFamilies #-}
+{-# language OverloadedStrings #-}
+
 module NestedRouteDispatchSpec.Foo.Route where
 
--- TODO: import the resources, define the datatype for the Foo route
+import NestedRouteDispatchSpec.Resources
+import Yesod.Core
+
+mkYesodDataOpts (mkRouteOpts (Just "FooR")) "App" resources

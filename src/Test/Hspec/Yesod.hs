@@ -292,8 +292,7 @@ import Test.Hspec.Yesod.Internal
 --
 -- Since 1.2.4
 data YesodExampleData site = YesodExampleData
-    { yedCreateApplication :: !(site -> Middleware -> IO Application)
-    , yedMiddleware :: !Middleware
+    { yedMiddleware :: !Middleware
     , yedSite :: !site
     , yedCookies :: !Cookies
     , yedRequest :: !(Maybe (RequestBuilderData () site))
@@ -362,15 +361,13 @@ type RequestBuilder url site = YT.SIO.SIO (RequestBuilderData url site)
 ydescribe :: String -> YesodSpec site -> YesodSpec site
 ydescribe = describe
 
-yesodSpec :: YesodDispatch site
-          => site
+yesodSpec :: site
           -> YesodSpec site
           -> Spec
 yesodSpec site =
     before $ do
         pure YesodExampleData
-            { yedCreateApplication = \finalSite middleware -> middleware <$> toWaiAppPlain finalSite
-            , yedMiddleware = id
+            { yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
             , yedRequest = Nothing
@@ -381,8 +378,7 @@ yesodSpec site =
 -- | Same as yesodSpec, but instead of taking already built site it
 -- takes an action which produces site for each test.
 yesodSpecWithSiteGenerator
-    :: YesodDispatch site
-    => IO site
+    :: IO site
     -> YesodSpec site
     -> Spec
 yesodSpecWithSiteGenerator getSiteAction =
@@ -393,16 +389,14 @@ yesodSpecWithSiteGenerator getSiteAction =
 --
 -- @since 1.6.4
 yesodSpecWithSiteGeneratorAndArgument
-    :: YesodDispatch site
-    => (a -> IO site)
+    :: (a -> IO site)
     -> YesodSpec site
     -> SpecWith a
 yesodSpecWithSiteGeneratorAndArgument getSiteAction =
     beforeWith $ \a -> do
         site <- getSiteAction a
         pure YesodExampleData
-            { yedCreateApplication = \finalSite middleware -> middleware <$> toWaiAppPlain finalSite
-            , yedMiddleware = id
+            { yedMiddleware = id
             , yedSite = site
             , yedCookies = M.empty
             , yedRequest = Nothing
@@ -1690,13 +1684,11 @@ type YSpec site = SpecWith (YesodExampleData site)
 -- | This creates a minimal 'YesodExampleData' for a given @site@. No
 -- middlewares are applied.
 siteToYesodExampleData
-    :: (YesodDispatch site)
-    => site
+    :: site
     -> YesodExampleData site
 siteToYesodExampleData site =
     YesodExampleData
-        { yedCreateApplication = \site' middleware -> middleware <$> toWaiAppPlain site'
-        , yedMiddleware = id
+        { yedMiddleware = id
         , yedSite = site
         , yedCookies = M.empty
         , yedRequest = Nothing

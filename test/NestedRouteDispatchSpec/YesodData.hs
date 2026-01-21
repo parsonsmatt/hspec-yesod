@@ -1,3 +1,16 @@
-module NestedRouteDispatch.YesodData where
+{-# language TemplateHaskell #-}
+{-# language ViewPatterns #-}
+{-# language TypeFamilies #-}
+{-# language OverloadedStrings #-}
 
--- TODO: write mkYesodData instance
+{-# OPTIONS_GHC -Wno-orphans #-}
+
+module NestedRouteDispatchSpec.YesodData where
+
+import NestedRouteDispatchSpec.Foo.Route (FooR(..))
+import NestedRouteDispatchSpec.Resources
+import Yesod.Core
+
+mkYesodDataOpts (mkRouteOpts Nothing) "App" resources
+
+instance Yesod App
