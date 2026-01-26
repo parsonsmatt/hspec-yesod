@@ -124,9 +124,7 @@ module Test.Hspec.Yesod
     , yesodSpecWithSiteGeneratorAndArgument
     , YesodExample
     , YesodExampleData(..)
-    , TestApp (..)
     , YSpec
-    , mkTestApp
     , ydescribe
     , yit
 
@@ -355,10 +353,16 @@ getResponse = fmap yedResponse MS.get
 -- | The 'RequestBuilder' state monad constructs a URL encoded string of arguments
 -- to send with your requests. Some of the functions that run on it use the current
 -- response to analyze the forms that the server is expecting to receive.
+--
+-- This type requires 'YesodDispatch' which may take a long time to
+-- compile by depending on all the modules in your web application. To
+-- reduce dependency load, see 'RequestBuilderFor'.
 type RequestBuilder site = RequestBuilderFor (Route site) site
 
 -- | A 'RequestBuilderFor' is a more general form of a 'RequestBuilder'
 -- that allows you to target nested route fragments.
+--
+-- @since TODO
 type RequestBuilderFor url site = YT.SIO.SIO (RequestBuilderData url site)
 
 -- | Start describing a Tests suite keeping cookies and a reference to the tested 'Application'
@@ -1484,13 +1488,14 @@ getEncodedPath pathSegments =
 -- >   setMethod "PUT"
 -- >   setUrl NameR
 request
-    :: (UrlToDispatch url site, Yesod site)
+    :: (UrlToDispatch url site, Yesod site, HasCallStack)
     => RequestBuilderFor url site ()
     -> YesodExample site ()
 request reqBuilder = do
     site <- MS.gets yedSite
     mRes <- MS.gets yedResponse
     oldCookies <- MS.gets yedCookies
+    middleware <- MS.gets yedMiddleware
 
     rbd@RequestBuilderData {..} <- liftIO $ execSIO reqBuilder RequestBuilderData
       { rbdPostData = MultipleItemsPostData []
@@ -1505,7 +1510,8 @@ request reqBuilder = do
 
     let path = getEncodedPath rbdPath
 
-    app <- mkApplicationFor rbd
+    appNoMiddleware <- mkApplicationFor rbd
+    let app = middleware appNoMiddleware
 
     -- expire cookies and filter them for the current path. TODO: support max age
     currentUtc <- liftIO getCurrentTime
@@ -1654,13 +1660,19 @@ request reqBuilder = do
 -- and also, dang it, we need the ParentArgs!! So we're gonna have to have
 -- `WithParentArgs a` on that, not regular routes.
 mkApplicationFor
-    :: (MonadIO m, UrlToDispatch url site, Yesod site)
+    :: (MonadIO m, UrlToDispatch url site, Yesod site, HasCallStack)
     => RequestBuilderData url site
     -> m Application
 mkApplicationFor rbd = liftIO $ do
     case rbdUrl rbd of
-        Nothing ->
-            failure "TODO: better error message"
+        Nothing -> do
+            let msg = mconcat
+                    [ "The test tried to make a request, but no URL was specified.\n"
+                    , "Previously, the libary would assume an empty URL to be the default / route.\n"
+                    , "Now, you must explicitly set a route in a request."
+                    ]
+
+            failure msg
         Just url -> do
             yre <- mkYesodRunnerEnv (rbdSite rbd)
             pure $ urlToDispatch url yre
@@ -1672,17 +1684,6 @@ parseSetCookies headers = map (Cookie.parseSetCookie . snd) $ DL.filter (("Set-C
 -- Yes, just a shortcut
 failure :: (HasCallStack, MonadIO a) => T.Text -> a b
 failure reason = (liftIO $ HUnit.assertFailure $ T.unpack reason) >> error ""
-
-data TestApp site = TestApp
-    { testAppSite :: site
-    , testAppMiddleware :: Middleware
-    }
-
-mkTestApp :: site -> TestApp site
-mkTestApp site = TestApp
-    { testAppSite = site
-    , testAppMiddleware = id
-    }
 
 type YSpec site = SpecWith (YesodExampleData site)
 
