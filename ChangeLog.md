@@ -1,5 +1,10 @@
 # ChangeLog for hspec-yesod
 
+## 0.2.1.1
+
+- [#8](https://github.com/parsonsmatt/hspec-yesod/pull/8)
+  - When `bodyContains` or `bodyNotContains` fail and the content is UTF-8, a partial body is printed to aid debugging. This matches the behavior of `statusIs`.
+
 ## 0.2.1.0
 
 - [#6](https://github.com/parsonsmatt/hspec-yesod/pull/6)
