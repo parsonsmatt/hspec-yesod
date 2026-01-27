@@ -1,5 +1,6 @@
 -- Ignore warnings about using deprecated byLabel/fileByLabel functions
-{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -47,6 +48,8 @@ import Data.Maybe (isNothing)
 import qualified Data.Text as T
 import Yesod.Test.Internal (contentTypeHeaderIsUtf8)
 
+import qualified NestedRouteDispatchSpec.Foo.HandlerSpec
+
 parseQuery_ :: Text -> [[SelectorGroup]]
 parseQuery_ = either error id . parseQuery
 
@@ -67,6 +70,7 @@ mkYesod "RoutedApp" [parseRoutes|
 
 main :: IO ()
 main = hspec $ do
+    describe "NestedRouteDispatchSpec.Foo.HandlerSpec" NestedRouteDispatchSpec.Foo.HandlerSpec.spec
     describe "CSS selector parsing" $ do
         it "elements" $ parseQuery_ "strong" @?= [[DeepChildren [ByTagName "strong"]]]
         it "child elements" $ parseQuery_ "strong > i" @?= [[DeepChildren [ByTagName "strong"], DirectChildren [ByTagName "i"]]]
@@ -497,11 +501,11 @@ main = hspec $ do
         yit "checks for valid content-type" $ do
             get ("get-json-wrong-content-type" :: Text)
             statusIs 200
-            (requireJSONResponse :: YesodExample site [Integer]) `liftedShouldThrow` (\(e :: SomeException) -> True)
+            (requireJSONResponse :: YesodExample site [Integer]) `liftedShouldThrow` (\(_ :: SomeException) -> True)
         yit "checks for valid JSON parse" $ do
             get ("get-json-response" :: Text)
             statusIs 200
-            (requireJSONResponse :: YesodExample site [Text]) `liftedShouldThrow` (\(e :: SomeException) -> True)
+            (requireJSONResponse :: YesodExample site [Text]) `liftedShouldThrow` (\(_ :: SomeException) -> True)
 
 instance RenderMessage LiteApp FormMessage where
     renderMessage _ _ = defaultFormMessage
@@ -649,8 +653,8 @@ getResourceR i = defaultLayout
 
 getIntegerR :: Handler Text
 getIntegerR = do
-    app <- getYesod
-    pure $ T.pack $ show (routedAppInteger app)
+    app' <- getYesod
+    pure $ T.pack $ show (routedAppInteger app')
 
 
 -- infix Copied from HSpec's version

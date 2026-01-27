@@ -1,0 +1,39 @@
+-- | This module hierarchy has the example on how to split routes up.
+--
+-- First, "NestedRouteDispatchSpec.Resources" defines the @resources@ value
+-- with 'parseRoutesNoCheck'. This gives us the @['ResourceTree' 'String']@
+-- that we need in order to generate the rest of the route information. The
+-- 'App' datatype is also defined there, along with the 'RouteOpts' that
+-- we'll use for the rest of the code generation.
+--
+-- Second, "NestedRouteDispatchSpec.Foo.Route" imports the @resources@
+-- above and calls @'mkYesodDataOpts' (mkRouteOpts (Just "FooR")) "App"
+-- resources@. This generates the code for the nested route fragment
+-- @FooR@.
+--
+-- Third, "NestedRouteDispatchSpec.Foo.Handler" imports the @resources@ and
+-- the @FooR@ route datatype, and creates the 'YesodDispatchNested'
+-- instance. The handlers for the datatype are defined here as well.
+--
+-- A developer could combine the prior two modules: defining both the route
+-- datatype and the handlers for that datatype in the same location. This
+-- would eliminate the need to have an orphan instance in the @Handler@
+-- module. However, this would require you to know about the implementation
+-- of the handlers in order to reference the route fragments, which is not
+-- ideal from a module graph compilation perspective.
+--
+-- Fourth, in "NestedRouteDispatchSpec.YesodData", we define the
+-- 'mkYesodDataOpts' for the entire 'App'. Then we can provide the
+-- @instance Yesod App@, which is required for running tests. This also
+-- gives us instances of 'ToParentRoute' since this is where the full
+-- @'Route' App@ is fully defined. This module needs to import the 'FooR'
+-- type, otherwise it will be regenerated and you'll get weird errors.
+--
+-- Finally, we have "NestedRouteDispatchSpec.Foo.HandlerSpec". This module
+-- writes a test against the 'FooIndexR' route. This module depends on the
+-- @instance Yesod App@ and the specific handlers, but it does not depend
+-- on any other handlers in order for the test to work.
+--
+-- With this feature set, we can now write tests that only depend on the
+-- handlers we actually need to call!
+module NestedRouteDispatchSpec where

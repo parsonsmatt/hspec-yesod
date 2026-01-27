@@ -1,5 +1,5 @@
 name:               hspec-yesod
-version:            0.2.1.1
+version:            0.3.0.0
 license:            MIT
 license-file:       LICENSE
 author:             Nubis <nubis@woobiz.com.ar>, Matt Parsons <parsonsmatt@gmail.com>
@@ -52,6 +52,15 @@ test-suite test
     default-language: Haskell2010
     type: exitcode-stdio-1.0
     main-is: main.hs
+    other-modules:
+       NestedRouteDispatchSpec
+       NestedRouteDispatchSpec.Resources
+       NestedRouteDispatchSpec.Foo.Route
+       NestedRouteDispatchSpec.Foo.Handler
+       NestedRouteDispatchSpec.Foo.HandlerSpec
+       NestedRouteDispatchSpec.YesodData
+       NestedRouteDispatchSpec.YesodDispatch
+
     hs-source-dirs: test
     build-depends:          base
                           , yesod-test

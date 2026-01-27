@@ -1,5 +1,11 @@
 # ChangeLog for hspec-yesod
 
+## 0.3.0.0
+
+- []()
+    - Support the new version of `yesod-core`.
+    - TODO: write more notes here
+
 ## 0.2.1.1
 
 - [#8](https://github.com/parsonsmatt/hspec-yesod/pull/8)
