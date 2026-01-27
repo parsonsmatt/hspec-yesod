@@ -660,7 +660,18 @@ assertEqualNoShow msg a b = liftIO $ HUnit.assertBool msg (a == b)
 statusIs :: HasCallStack => Int -> YesodExample site ()
 statusIs number = do
   latestRequest <- requireLatestRequest
-  withResponse $ \(SResponse status headers body) -> do
+  withResponse $ \resp@(SResponse status _ _) -> do
+
+    liftIO $ flip HUnit.assertBool (H.statusCode status == number) $ unlines
+      [ "Expected status: " <> show number
+      , "But status was: " <> (show $ H.statusCode status)
+      , "Request: " <> (T.unpack $ formatRequestBuilderDataForDebugging latestRequest)
+      , "Request body: " <> (T.unpack $ getRequestBodyPreview latestRequest)
+      , "Response body: " <> getResponseBodyPreview resp
+      ]
+
+getResponseBodyPreview :: SResponse -> String
+getResponseBodyPreview (SResponse _ headers body) =
     let mResponseContentType = lookup hContentType headers
         isResponseUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mResponseContentType
 
@@ -668,35 +679,28 @@ statusIs number = do
         previewFinal = if responsePreview == "" then "<empty response>" else
                 if isResponseUTF8ContentType then T.unpack $ YT.Internal.getBodyTextPreview body
                     else "<content-type not suitable for printing>"
+    in previewFinal
 
-    liftIO $ flip HUnit.assertBool (H.statusCode status == number) $ unlines
-      [ "Expected status: " <> show number
-      , "But status was: " <> (show $ H.statusCode status)
-      , "Request: " <> (T.unpack $ formatRequestBuilderDataForDebugging latestRequest)
-      , "Request body: " <> (T.unpack $ getRequestBodyPreview latestRequest)
-      , "Response body: " <> previewFinal
-      ]
 
-  where
-    getRequestBodyPreview :: RequestBuilderData url site -> T.Text
-    getRequestBodyPreview RequestBuilderData{..} =
-        let mRequestContentType = lookup hContentType rbdHeaders
-            isRequestUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mRequestContentType
-        in case rbdPostData of
-                    MultipleItemsPostData xs -> case xs of
-                        [] -> "<empty body>"
-                        _ -> "<POST param preview not supported>"
-                    BinaryPostData lbs -> if isRequestUTF8ContentType then
-                        getRequestTextPreview lbs
-                        else "<empty body>"
-
-    getRequestTextPreview :: BSL8.ByteString -> T.Text
-    getRequestTextPreview body =
-      let characterLimit = 1024
-          textBody = TL.toStrict $ decodeUtf8 body
-      in if T.length textBody < characterLimit
-            then textBody
-            else T.take characterLimit textBody <> "... (use `rbdPostData` from `yedRequest` to see complete request body)"
+getRequestBodyPreview :: RequestBuilderData url site -> T.Text
+getRequestBodyPreview RequestBuilderData{..} =
+    let mRequestContentType = lookup hContentType rbdHeaders
+        isRequestUTF8ContentType = maybe False YT.Internal.contentTypeHeaderIsUtf8 mRequestContentType
+    in case rbdPostData of
+                MultipleItemsPostData xs -> case xs of
+                    [] -> "<empty body>"
+                    _ -> "<POST param preview not supported>"
+                BinaryPostData lbs -> if isRequestUTF8ContentType then
+                    getRequestTextPreview lbs
+                    else "<empty body>"
+    where
+        getRequestTextPreview :: BSL8.ByteString -> T.Text
+        getRequestTextPreview body =
+          let characterLimit = 1024
+              textBody = TL.toStrict $ decodeUtf8 body
+          in if T.length textBody < characterLimit
+                then textBody
+                else T.take characterLimit textBody <> "... (use `rbdPostData` from `yedRequest` to see complete request body)"
 
 
 -- | Assert the given header key/value pair was returned.
@@ -778,9 +782,15 @@ bodyEquals text = withResponse $ \ res -> do
 -- > get HomeR
 -- > bodyContains "<h1>Foo</h1>"
 bodyContains :: (HasCallStack) => String -> YesodExample site ()
-bodyContains text = withResponse $ \ res ->
-  liftIO $ HUnit.assertBool ("Expected body to contain " ++ text) $
-    (simpleBody res) `contains` text
+bodyContains text = do
+  latestRequest <- requireLatestRequest
+  withResponse $ \resp@(SResponse _ _ body) -> do
+      liftIO $ flip HUnit.assertBool (body `contains` text) $ unlines
+          [ "Expected body to contain: " <> text
+          , "Request: " <> (T.unpack $ formatRequestBuilderDataForDebugging latestRequest)
+          , "Request body: " <> (T.unpack $ getRequestBodyPreview latestRequest)
+          , "Response body: " <> getResponseBodyPreview resp
+          ]
 
 -- | Assert the last response doesn't have the given text. The check is performed using the response
 -- body in full text form.
@@ -792,9 +802,15 @@ bodyContains text = withResponse $ \ res ->
 --
 -- @since 1.5.3
 bodyNotContains :: (HasCallStack) => String -> YesodExample site ()
-bodyNotContains text = withResponse $ \ res ->
-  liftIO $ HUnit.assertBool ("Expected body not to contain " ++ text) $
-    not $ contains (simpleBody res) text
+bodyNotContains text = do
+  latestRequest <- requireLatestRequest
+  withResponse $ \resp@(SResponse _ _ body) -> do
+      liftIO $ flip HUnit.assertBool (not $ body `contains` text) $ unlines
+              [ "Expected body to not contain: " <> text
+              , "Request: " <> (T.unpack $ formatRequestBuilderDataForDebugging latestRequest)
+              , "Request body: " <> (T.unpack $ getRequestBodyPreview latestRequest)
+              , "Response body: " <> getResponseBodyPreview resp
+              ]
 
 contains :: BSL8.ByteString -> String -> Bool
 contains a b = DL.isInfixOf b (TL.unpack $ decodeUtf8 a)
