@@ -1323,7 +1323,7 @@ performMethod method url = request $ do
 -- > get HomeR
 -- > followRedirect
 followRedirect
-    :: (YesodDispatch site)
+    :: (UrlToDispatch T.Text site, YesodDispatch site)
     => YesodExample site (Either T.Text T.Text) -- ^ 'Left' with an error message if not a redirect, 'Right' with the redirected URL if it was
 followRedirect = do
   mr <- getResponse
@@ -1424,7 +1424,7 @@ setUrlNested parentArgs url = setUrl (WithParentArgs parentArgs url)
 -- > clickOn "a#idofthelink"
 --
 -- @since 1.5.7
-clickOn :: (HasCallStack, YesodDispatch site) => Query -> YesodExample site ()
+clickOn :: (HasCallStack, UrlToDispatch T.Text site, YesodDispatch site) => Query -> YesodExample site ()
 clickOn query = do
   withResponse' yedResponse ["Tried to invoke clickOn in order to read HTML of a previous response."] $ \ res ->
     case YT.CSS.findAttributeBySelector (simpleBody res) query "href" of
