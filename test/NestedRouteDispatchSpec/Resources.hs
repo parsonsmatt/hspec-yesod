@@ -19,8 +19,10 @@ resources = [parseRoutesNoCheck|
 
 |]
 
-mkRouteOpts :: Maybe String -> RouteOpts
-mkRouteOpts mtarget =
-    setFocusOnNestedRoute mtarget $
-        setNestedRouteFallthrough True $
-            defaultOpts
+nestDefaultOptsFor :: String -> RouteOpts
+nestDefaultOptsFor target =
+    setFocusOnNestedRoute target nestDefaultOpts
+
+nestDefaultOpts :: RouteOpts
+nestDefaultOpts =
+    setNestedRouteFallthrough True defaultOpts

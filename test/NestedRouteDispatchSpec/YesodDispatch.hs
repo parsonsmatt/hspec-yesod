@@ -13,7 +13,7 @@ import NestedRouteDispatchSpec.YesodData
 import Yesod.Core
 import Data.Text (Text)
 
-mkYesodDispatchOpts (mkRouteOpts Nothing) "App" resources
+mkYesodDispatchOpts nestDefaultOpts "App" resources
 
 getHomeR :: HandlerFor App Text
 getHomeR = pure "HomeR"

@@ -12,7 +12,7 @@ import qualified Data.Text as Text
 import Data.Text (Text)
 import Yesod.Core
 
-mkYesodDispatchOpts (mkRouteOpts (Just "FooR")) "App" resources
+mkYesodDispatchOpts (nestDefaultOptsFor "FooR") "App" resources
 
 getFooIndexR :: Int -> HandlerFor App Text
 getFooIndexR i = pure $ "getFooIndexR: " <> Text.pack (show i)

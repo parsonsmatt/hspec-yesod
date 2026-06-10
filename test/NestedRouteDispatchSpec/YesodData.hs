@@ -11,6 +11,6 @@ import NestedRouteDispatchSpec.Foo.Route (FooR(..))
 import NestedRouteDispatchSpec.Resources
 import Yesod.Core
 
-mkYesodDataOpts (mkRouteOpts Nothing) "App" resources
+mkYesodDataOpts nestDefaultOpts "App" resources
 
 instance Yesod App

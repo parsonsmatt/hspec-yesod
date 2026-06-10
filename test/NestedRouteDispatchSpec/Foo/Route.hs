@@ -8,4 +8,4 @@ module NestedRouteDispatchSpec.Foo.Route where
 import NestedRouteDispatchSpec.Resources
 import Yesod.Core
 
-mkYesodDataOpts (mkRouteOpts (Just "FooR")) "App" resources
+mkYesodDataOpts (nestDefaultOptsFor "FooR") "App" resources
