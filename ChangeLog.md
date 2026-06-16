@@ -6,9 +6,9 @@
     - Require `yesod-core >= 1.7.0.0`.
     - You can now test a subset of routes without depending on the full
       `YesodDispatch` for your application, which can dramatically reduce
-      compile times for tests. Use the new `setUrlNested` to target a
-      nested route fragment and `RequestBuilderFor` for builders that work
-      over one.
+      compile times for tests. `setUrl` and the new `setUrlNested` can both
+      accept route fragments using `RequestBuilderFor`, which carries the type
+      of the route fragment.
     - **Breaking:** `RequestBuilderData` gained a `url` type parameter, so
       it is now `RequestBuilderData url site`. `getLatestRequest` and
       `requireLatestRequest` return `RequestBuilderData () site`.
