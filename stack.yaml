@@ -7,7 +7,5 @@ packages:
 allow-newer: true
 
 extra-deps:
-  - git: https://github.com/yesodweb/yesod.git
-    commit: bb5998828754a5870077f838e3229d40b09baca3
-    subdir: yesod-core
+  - yesod-core-1.7.0.0
   - encoding-0.10.2
