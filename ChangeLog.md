@@ -2,9 +2,14 @@
 
 ## 0.3.0.0
 
-- []()
-    - Support the new version of `yesod-core`.
-    - TODO: write more notes here
+- [#7](https://github.com/parsonsmatt/hspec-yesod/pull/7)
+    - Require `yesod-core >= 1.7.0.0`.
+    - Support testing a subset of routes via the nested route-dispatch
+      helpers, without depending on the full `YesodDispatch`. Add a type
+      variable to `RequestBuilderData` and use `UrlToDispatch` for raw
+      `Text` route helpers.
+    - Apply WAI middlewares in the request builder.
+    - Add a `CallStack` to `requireLatestRequest`.
 
 ## 0.2.1.1
 
