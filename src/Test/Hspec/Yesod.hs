@@ -362,7 +362,7 @@ type RequestBuilder site = RequestBuilderFor (Route site) site
 -- | A 'RequestBuilderFor' is a more general form of a 'RequestBuilder'
 -- that allows you to target nested route fragments.
 --
--- @since TODO
+-- @since 0.3.0.0
 type RequestBuilderFor url site = YT.SIO.SIO (RequestBuilderData url site)
 
 -- | Start describing a Tests suite keeping cookies and a reference to the tested 'Application'
@@ -1407,7 +1407,7 @@ setUrl url' = do
 
 -- | Set the URL of the request, specialized to a nested route fragment.
 --
--- @since
+-- @since 0.3.0.0
 setUrlNested
     :: (RedirectUrl site (WithParentArgs url), Yesod site)
     => ParentArgs url
@@ -1649,32 +1649,12 @@ request reqBuilder = do
       , queryString = urlQuery
       }
 
--- TODO: OK, this is the tricky part.
+-- | Build a WAI 'Application' for the route stored in the request builder.
 --
--- Based on @url@ type variable, we need to produce an 'Application'
--- capable of handling that. Upstream gives us 'toWaiAppPlain'' which
--- *does* this - but it requires @'YesodDispatchNested' url@, which is
--- a problem: nominally, the current interface supports @url@ of type
--- 'Text' via the 'RedirectUrl' class. Indeed the actual 'setUrl' logic
--- calls that to produce a 'Text' value, and the 'RedirectUrl' instances
--- for 'Text' is merely 'return'.
---
--- @yesod-core@ can make instances of 'RedirectUrl' for route fragment
--- types. So that lets us reuse most of the same logic for generating the
--- path fragment. But then we need. uh. a weird class. like.
---
--- > type TypeToDispatch :: Type -> Type -> Constraint
--- > type family TypeToDispatch a site where
--- >     TypeToDispatch Text site = YesodDispatch site
--- >     TypeToDispatch (Route site) site' = (YesodDispatch site, site ~ site')
--- >     TypeToDispatch route site = (YesodDispatchNested route, ParentSite route ~ site)
---
--- But just having the constraint around doesn't mean we know what to *do*
--- with it... so that means we require a *class* with *instances* and
--- that's open and oof.
---
--- and also, dang it, we need the ParentArgs!! So we're gonna have to have
--- `WithParentArgs a` on that, not regular routes.
+-- The @url@ type determines the dispatch target: a full 'Route' dispatches
+-- against the whole site, while a nested route fragment dispatches against
+-- just that fragment (see 'setUrlNested'). A request with no URL set is an
+-- error.
 mkApplicationFor
     :: (MonadIO m, UrlToDispatch url site, Yesod site, HasCallStack)
     => RequestBuilderData url site
