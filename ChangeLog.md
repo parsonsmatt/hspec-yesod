@@ -27,9 +27,12 @@
       test and reused across requests, instead of being rebuilt on every
       request. `mkYesodRunnerEnv` spawns `auto-update` worker threads, so
       per-request construction leaked threads proportional to the number of
-      requests; caching keeps this to a handful per test, rebuilt
-      automatically when the site changes. The new `getRunnerEnv` exposes
-      this environment.
+      requests; caching keeps this to a handful per test. The cache is keyed
+      on the `StableName` of `yedSite`, so it is rebuilt automatically
+      whenever the site is replaced — whether through
+      `testModifyFoundationAndMiddleware` or a direct state update — and can
+      never serve an environment built from a stale site. The new
+      `getRunnerEnv` exposes this environment.
     - The `YesodDispatch site` constraint is no longer required by
       `yesodSpec`, `yesodSpecWithSiteGenerator`,
       `yesodSpecWithSiteGeneratorAndArgument`, or `siteToYesodExampleData`.
