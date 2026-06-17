@@ -264,7 +264,7 @@ import Control.Monad.State.Class hiding (get)
 import System.IO
 import Yesod.Core.Unsafe (runFakeHandler)
 import Yesod.Core
-import Yesod.Core.Types (YesodRunnerEnv, yreGetMaxExpires)
+import Yesod.Core.Types (YesodRunnerEnv)
 import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Encoding (encodeUtf8, decodeUtf8, decodeUtf8With)
 import Text.XML.Cursor hiding (element)
@@ -273,8 +273,7 @@ import qualified Text.HTML.DOM as HD
 import qualified Data.Map as M
 import qualified Web.Cookie as Cookie
 import qualified Blaze.ByteString.Builder as Builder
-import Data.Time.Clock (getCurrentTime, addUTCTime)
-import Data.Time.Format (formatTime, defaultTimeLocale)
+import Data.Time.Clock (getCurrentTime)
 import Control.Applicative ((<$>))
 import Text.Show.Pretty (ppShow)
 import Data.Monoid (mempty)
@@ -346,15 +345,6 @@ getTestYesod = fmap yedSite MS.get
 -- threads per test, and also keeps runtime state (such as the CSRF session
 -- key) stable across a test. The cache is invalidated whenever the site
 -- changes, so a modified site gets a fresh environment on its next request.
---
--- We additionally replace 'yreGetMaxExpires' with a plain, thread-free
--- recomputation (see 'testGetMaxExpires'). The default built by
--- 'mkYesodRunnerEnv' is an @auto-update@ worker on a 24-hour cycle: once
--- dispatch reads it (to set a session-cookie expiry) the worker sleeps for a
--- full day, so it would otherwise linger for essentially the whole test
--- process. By swapping the field before it is ever read, that worker is
--- never used, becomes unreachable, and the RTS reaps it
--- (@BlockedIndefinitelyOnMVar@) at the next GC.
 getRunnerEnv :: Yesod site => YesodExample site (YesodRunnerEnv site)
 getRunnerEnv = do
     mCachedEnv <- MS.gets yedRunnerEnv
@@ -364,21 +354,8 @@ getRunnerEnv = do
         Nothing -> do
             currentSite <- MS.gets yedSite
             env <- liftIO $ mkYesodRunnerEnv currentSite
-            let env' = env { yreGetMaxExpires = testGetMaxExpires }
-            modify $ \yed -> yed { yedRunnerEnv = Just env' }
-            pure env'
-
--- | A thread-free replacement for the @max-expires@ getter that
--- 'mkYesodRunnerEnv' installs (which is an @auto-update@ worker). This is a
--- faithful reimplementation of @yesod-core@'s internal
--- @getCurrentMaxExpiresRFC1123@ (an RFC1123-formatted timestamp one year in
--- the future), recomputed on each call rather than cached behind a worker
--- thread. See 'getRunnerEnv' for why we avoid the worker.
-testGetMaxExpires :: IO T.Text
-testGetMaxExpires =
-    T.pack . formatTime defaultTimeLocale "%a, %d %b %Y %X %Z" . addUTCTime oneYear <$> getCurrentTime
-  where
-    oneYear = 60 * 60 * 24 * 365
+            modify $ \yed -> yed { yedRunnerEnv = Just env }
+            pure env
 
 -- | Get the most recently provided request value, if available.
 --
