@@ -250,7 +250,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TErr
 import GHC.Stack (withFrozenCallStack)
-import System.Mem.StableName (StableName, makeStableName)
 import qualified Data.ByteString.Lazy.Char8 as BSL8
 import qualified Test.HUnit as HUnit
 import qualified Network.HTTP.Types as H
@@ -296,16 +295,6 @@ import Test.Hspec.Yesod.Internal
 data YesodExampleData site = YesodExampleData
     { yedMiddleware :: !Middleware
     , yedSite :: !site
-    , yedRunnerEnv :: !(Maybe (StableName site, YesodRunnerEnv site))
-    -- ^ The dispatch environment (logger, session backend, max-expires
-    -- cache) for the current @site@, paired with the 'StableName' of the
-    -- @site@ it was built from. 'mkYesodRunnerEnv' spawns several long-lived
-    -- @auto-update@ worker threads, so we build it once and reuse it across
-    -- requests rather than per request. The cache is keyed on the @site@'s
-    -- 'StableName': 'getRunnerEnv' rebuilds whenever 'yedSite' is a different
-    -- heap object than the one the cached environment was built from, so any
-    -- change to the site (whether via 'testModifyFoundationAndMiddleware' or
-    -- a direct state update) is picked up automatically. See 'getRunnerEnv'.
     , yedCookies :: !Cookies
     , yedRequest :: !(Maybe (RequestBuilderData () site))
     , yedResponse :: !(Maybe SResponse)
@@ -338,40 +327,21 @@ type YesodSpecWith site r = SpecWith (YesodExampleData site, r)
 getTestYesod :: YesodExample site site
 getTestYesod = fmap yedSite MS.get
 
--- | Get the 'YesodRunnerEnv' for the current test, building it on first use
--- via 'mkYesodRunnerEnv' and caching it in 'yedRunnerEnv' for subsequent
--- requests.
+-- | Build a 'YesodRunnerEnv' for the current test's 'yedSite' via
+-- 'mkYesodRunnerEnv'.
 --
--- 'mkYesodRunnerEnv' spawns several @auto-update@ worker threads (for the
--- logger date, session date, and max-expires caches), so building it per
--- request would leak threads proportional to the number of requests.
--- Building it once and reusing it keeps that to a handful of threads per
--- test, and also keeps runtime state (such as the CSRF session key) stable
--- across a test.
---
--- The cache is keyed on the 'StableName' of 'yedSite': if the current site
--- is a different heap object than the one the cached environment was built
--- from, the environment is rebuilt. 'yedSite' is a strict field, so it is
--- always in WHNF and its 'StableName' is stable across requests as long as
--- the site is not replaced. This means any change to the site is picked up
--- automatically, whether it goes through 'testModifyFoundationAndMiddleware'
--- or a direct state update (as some downstream test harnesses do), without
--- relying on every mutation path to remember to invalidate the cache.
--- 'StableName' equality is only ever true for the same object, so a stale
--- environment can never be served; the worst case is a redundant rebuild.
+-- The environment is built fresh on each call so that it always reflects the
+-- current site, including any per-request foundation changes that downstream
+-- harnesses make by updating 'yedSite' directly. 'mkYesodRunnerEnv' spawns a
+-- few @auto-update@ worker threads (for the logger date, session date, and
+-- max-expires caches); when an environment is no longer referenced those
+-- workers block and the RTS reaps them (@BlockedIndefinitelyOnMVar@). Their
+-- lifecycle is a @yesod-core@ concern, not something this library tries to
+-- pool around.
 getRunnerEnv :: Yesod site => YesodExample site (YesodRunnerEnv site)
 getRunnerEnv = do
     currentSite <- MS.gets yedSite
-    currentName <- liftIO $ makeStableName currentSite
-    mCachedEnv <- MS.gets yedRunnerEnv
-    case mCachedEnv of
-        Just (cachedName, env)
-            | cachedName == currentName ->
-                pure env
-        _ -> do
-            env <- liftIO $ mkYesodRunnerEnv currentSite
-            modify $ \yed -> yed { yedRunnerEnv = Just (currentName, env) }
-            pure env
+    liftIO $ mkYesodRunnerEnv currentSite
 
 -- | Get the most recently provided request value, if available.
 --
@@ -426,7 +396,6 @@ yesodSpec site =
         pure YesodExampleData
             { yedMiddleware = id
             , yedSite = site
-            , yedRunnerEnv = Nothing
             , yedCookies = M.empty
             , yedRequest = Nothing
             , yedResponse = Nothing
@@ -456,7 +425,6 @@ yesodSpecWithSiteGeneratorAndArgument getSiteAction =
         pure YesodExampleData
             { yedMiddleware = id
             , yedSite = site
-            , yedRunnerEnv = Nothing
             , yedCookies = M.empty
             , yedRequest = Nothing
             , yedResponse = Nothing
@@ -587,10 +555,7 @@ testModifyFoundationAndMiddleware mkNewSiteAndMiddleware = do
     currentSite <- gets yedSite
     currentMiddleware <- gets yedMiddleware
     (newSite, newMiddleware) <- liftIO $ mkNewSiteAndMiddleware currentSite currentMiddleware
-    -- Drop the cached runner env eagerly. 'getRunnerEnv' would rebuild it
-    -- anyway once it sees the new site's 'StableName', but clearing it here
-    -- releases the old environment (and its worker threads) promptly.
-    modify $ \yed -> yed { yedSite = newSite, yedMiddleware = newMiddleware, yedRunnerEnv = Nothing }
+    modify $ \yed -> yed { yedSite = newSite, yedMiddleware = newMiddleware }
 
 -- | Sets a cookie
 --
@@ -1755,7 +1720,6 @@ siteToYesodExampleData site =
     YesodExampleData
         { yedMiddleware = id
         , yedSite = site
-        , yedRunnerEnv = Nothing
         , yedCookies = M.empty
         , yedRequest = Nothing
         , yedResponse = Nothing

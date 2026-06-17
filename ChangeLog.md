@@ -20,19 +20,15 @@
       error if no URL was set.
     - **Breaking:** removed `TestApp`, `mkTestApp`, and the
       `yedCreateApplication` field of `YesodExampleData`. The WAI
-      application is now built from the target URL using a cached
-      `YesodRunnerEnv` (see below).
-    - **Breaking:** `YesodExampleData` gained a `yedRunnerEnv` field. The
-      `YesodRunnerEnv` (logger, session backend, etc.) is now built once per
-      test and reused across requests, instead of being rebuilt on every
-      request. `mkYesodRunnerEnv` spawns `auto-update` worker threads, so
-      per-request construction leaked threads proportional to the number of
-      requests; caching keeps this to a handful per test. The cache is keyed
-      on the `StableName` of `yedSite`, so it is rebuilt automatically
-      whenever the site is replaced — whether through
-      `testModifyFoundationAndMiddleware` or a direct state update — and can
-      never serve an environment built from a stale site. The new
-      `getRunnerEnv` exposes this environment.
+      application is now built from the target URL using a `YesodRunnerEnv`
+      constructed for the current site (see `getRunnerEnv`).
+    - Added `getRunnerEnv`, which builds a `YesodRunnerEnv` for the current
+      test's `yedSite` via `mkYesodRunnerEnv`. The environment is built fresh
+      per request so that it always reflects the current site, including
+      per-request foundation changes made by updating `yedSite` directly.
+      (`mkYesodRunnerEnv` spawns `auto-update` worker threads; when an
+      environment is no longer referenced those workers block and the RTS
+      reaps them. Their lifecycle is a `yesod-core` concern.)
     - The `YesodDispatch site` constraint is no longer required by
       `yesodSpec`, `yesodSpecWithSiteGenerator`,
       `yesodSpecWithSiteGeneratorAndArgument`, or `siteToYesodExampleData`.
