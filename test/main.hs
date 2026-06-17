@@ -1,6 +1,5 @@
 -- Ignore warnings about using deprecated byLabel/fileByLabel functions
 {-# OPTIONS_GHC -Wno-deprecations #-}
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -460,9 +459,11 @@ main = hspec $ do
             statusIs 201
 
             loc <- getLocation
-            liftIO $ assertBool "expected location to be available" $ isRight loc
-            let (Right (ResourceR t)) = loc
-            liftIO $ assertBool "expected location header to contain post param" $ t == "bar"
+            case loc of
+                Right (ResourceR t) ->
+                    liftIO $ assertBool "expected location header to contain post param" $ t == "bar"
+                other ->
+                    liftIO $ assertFailure $ "expected a Right ResourceR location, got: " <> show other
 
         yit "returns a Left when no redirect was returned" $ do
             get HomeR

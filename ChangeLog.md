@@ -20,12 +20,26 @@
       error if no URL was set.
     - **Breaking:** removed `TestApp`, `mkTestApp`, and the
       `yedCreateApplication` field of `YesodExampleData`. The WAI
-      application is now built per-request from the target URL.
+      application is now built from the target URL using a cached
+      `YesodRunnerEnv` (see below).
+    - **Breaking:** `YesodExampleData` gained a `yedRunnerEnv` field. The
+      `YesodRunnerEnv` (logger, session backend, etc.) is now built once per
+      test and reused across requests, instead of being rebuilt on every
+      request. `mkYesodRunnerEnv` spawns `auto-update` worker threads, so
+      per-request construction leaked threads proportional to the number of
+      requests; caching keeps this to a handful per test, rebuilt
+      automatically when the site changes. Additionally, the 24-hour
+      `max-expires` worker is swapped for a thread-free recomputation so it
+      no longer lingers for the life of the test process. The new
+      `getRunnerEnv` exposes this environment.
     - The `YesodDispatch site` constraint is no longer required by
       `yesodSpec`, `yesodSpecWithSiteGenerator`,
       `yesodSpecWithSiteGeneratorAndArgument`, or `siteToYesodExampleData`.
     - WAI middlewares are now applied in the request builder.
     - Add a `CallStack` to `requireLatestRequest`.
+    - Assertion failures now use `withFrozenCallStack`, and the debug
+      formatters decode request bytes leniently, so a failure message can no
+      longer be masked by a `UnicodeException`.
 
 ## 0.2.1.1
 

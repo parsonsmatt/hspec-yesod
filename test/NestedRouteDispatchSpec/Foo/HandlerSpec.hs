@@ -11,8 +11,9 @@ import Test.Hspec (Spec, before, it)
 spec :: Spec
 spec = do
     before (pure (siteToYesodExampleData App)) $ do
-        it "lets me do setUrl" $ do
-            request $ do
-                setUrl (WithParentArgs 1 FooIndexR)
-                setUrlNested 1 FooIndexR
+        it "lets me dispatch a nested route fragment via setUrl" $ do
+            request $ setUrl (WithParentArgs 1 FooIndexR)
+            bodyEquals "getFooIndexR: 1"
+        it "lets me dispatch a nested route fragment via setUrlNested" $ do
+            request $ setUrlNested 1 FooIndexR
             bodyEquals "getFooIndexR: 1"

@@ -21,4 +21,4 @@ getFooEditR :: Int -> HandlerFor App Text
 getFooEditR i = pure $ "getFooEditR: " <> Text.pack (show i)
 
 getFooShowR :: Int -> Int -> HandlerFor App Text
-getFooShowR i j = pure $ "getFooEditR: " <> Text.pack (show (i, j))
+getFooShowR i j = pure $ "getFooShowR: " <> Text.pack (show (i, j))

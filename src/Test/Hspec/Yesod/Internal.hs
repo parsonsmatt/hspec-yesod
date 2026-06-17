@@ -27,7 +27,7 @@ data RequestBuilderData url site = RequestBuilderData
 voidRequestBuilderUrl :: RequestBuilderData url site -> RequestBuilderData () site
 voidRequestBuilderUrl rbd =
     rbd
-        { rbdUrl = Just ()
+        { rbdUrl = () <$ rbdUrl rbd
         }
 
 data RBDPostData = MultipleItemsPostData [RequestPart]

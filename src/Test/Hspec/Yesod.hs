@@ -1,5 +1,4 @@
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DerivingStrategies, GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -223,6 +222,7 @@ module Test.Hspec.Yesod
 
     -- * Grab information
     , getTestYesod
+    , getRunnerEnv
     , getLatestRequest
     , requireLatestRequest
     , formatRequestBuilderDataForDebugging
@@ -249,6 +249,7 @@ import Data.ByteString (ByteString)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TErr
+import GHC.Stack (withFrozenCallStack)
 import qualified Data.ByteString.Lazy.Char8 as BSL8
 import qualified Test.HUnit as HUnit
 import qualified Network.HTTP.Types as H
@@ -263,6 +264,7 @@ import Control.Monad.State.Class hiding (get)
 import System.IO
 import Yesod.Core.Unsafe (runFakeHandler)
 import Yesod.Core
+import Yesod.Core.Types (YesodRunnerEnv, yreGetMaxExpires)
 import qualified Data.Text.Lazy as TL
 import Data.Text.Lazy.Encoding (encodeUtf8, decodeUtf8, decodeUtf8With)
 import Text.XML.Cursor hiding (element)
@@ -271,7 +273,8 @@ import qualified Text.HTML.DOM as HD
 import qualified Data.Map as M
 import qualified Web.Cookie as Cookie
 import qualified Blaze.ByteString.Builder as Builder
-import Data.Time.Clock (getCurrentTime)
+import Data.Time.Clock (getCurrentTime, addUTCTime)
+import Data.Time.Format (formatTime, defaultTimeLocale)
 import Control.Applicative ((<$>))
 import Text.Show.Pretty (ppShow)
 import Data.Monoid (mempty)
@@ -293,6 +296,13 @@ import Test.Hspec.Yesod.Internal
 data YesodExampleData site = YesodExampleData
     { yedMiddleware :: !Middleware
     , yedSite :: !site
+    , yedRunnerEnv :: !(Maybe (YesodRunnerEnv site))
+    -- ^ The dispatch environment (logger, session backend, max-expires
+    -- cache) for the current @site@. 'mkYesodRunnerEnv' spawns several
+    -- long-lived @auto-update@ worker threads, so we build it once per test
+    -- and reuse it across requests rather than per request. Reset to
+    -- 'Nothing' whenever the site changes so a fresh environment is built.
+    -- See 'getRunnerEnv'.
     , yedCookies :: !Cookies
     , yedRequest :: !(Maybe (RequestBuilderData () site))
     , yedResponse :: !(Maybe SResponse)
@@ -324,6 +334,51 @@ type YesodSpecWith site r = SpecWith (YesodExampleData site, r)
 -- Since 1.2.0
 getTestYesod :: YesodExample site site
 getTestYesod = fmap yedSite MS.get
+
+-- | Get the 'YesodRunnerEnv' for the current test, building it on first use
+-- via 'mkYesodRunnerEnv' and caching it in 'yedRunnerEnv' for subsequent
+-- requests.
+--
+-- 'mkYesodRunnerEnv' spawns several @auto-update@ worker threads (for the
+-- logger date, session date, and max-expires caches), so building it per
+-- request would leak threads proportional to the number of requests.
+-- Building it once per test and reusing it keeps that to a handful of
+-- threads per test, and also keeps runtime state (such as the CSRF session
+-- key) stable across a test. The cache is invalidated whenever the site
+-- changes, so a modified site gets a fresh environment on its next request.
+--
+-- We additionally replace 'yreGetMaxExpires' with a plain, thread-free
+-- recomputation (see 'testGetMaxExpires'). The default built by
+-- 'mkYesodRunnerEnv' is an @auto-update@ worker on a 24-hour cycle: once
+-- dispatch reads it (to set a session-cookie expiry) the worker sleeps for a
+-- full day, so it would otherwise linger for essentially the whole test
+-- process. By swapping the field before it is ever read, that worker is
+-- never used, becomes unreachable, and the RTS reaps it
+-- (@BlockedIndefinitelyOnMVar@) at the next GC.
+getRunnerEnv :: Yesod site => YesodExample site (YesodRunnerEnv site)
+getRunnerEnv = do
+    mCachedEnv <- MS.gets yedRunnerEnv
+    case mCachedEnv of
+        Just env ->
+            pure env
+        Nothing -> do
+            currentSite <- MS.gets yedSite
+            env <- liftIO $ mkYesodRunnerEnv currentSite
+            let env' = env { yreGetMaxExpires = testGetMaxExpires }
+            modify $ \yed -> yed { yedRunnerEnv = Just env' }
+            pure env'
+
+-- | A thread-free replacement for the @max-expires@ getter that
+-- 'mkYesodRunnerEnv' installs (which is an @auto-update@ worker). This is a
+-- faithful reimplementation of @yesod-core@'s internal
+-- @getCurrentMaxExpiresRFC1123@ (an RFC1123-formatted timestamp one year in
+-- the future), recomputed on each call rather than cached behind a worker
+-- thread. See 'getRunnerEnv' for why we avoid the worker.
+testGetMaxExpires :: IO T.Text
+testGetMaxExpires =
+    T.pack . formatTime defaultTimeLocale "%a, %d %b %Y %X %Z" . addUTCTime oneYear <$> getCurrentTime
+  where
+    oneYear = 60 * 60 * 24 * 365
 
 -- | Get the most recently provided request value, if available.
 --
@@ -378,6 +433,7 @@ yesodSpec site =
         pure YesodExampleData
             { yedMiddleware = id
             , yedSite = site
+            , yedRunnerEnv = Nothing
             , yedCookies = M.empty
             , yedRequest = Nothing
             , yedResponse = Nothing
@@ -407,6 +463,7 @@ yesodSpecWithSiteGeneratorAndArgument getSiteAction =
         pure YesodExampleData
             { yedMiddleware = id
             , yedSite = site
+            , yedRunnerEnv = Nothing
             , yedCookies = M.empty
             , yedRequest = Nothing
             , yedResponse = Nothing
@@ -537,7 +594,8 @@ testModifyFoundationAndMiddleware mkNewSiteAndMiddleware = do
     currentSite <- gets yedSite
     currentMiddleware <- gets yedMiddleware
     (newSite, newMiddleware) <- liftIO $ mkNewSiteAndMiddleware currentSite currentMiddleware
-    modify $ \yed -> yed { yedSite = newSite, yedMiddleware = newMiddleware }
+    -- Invalidate the cached runner env: the next request rebuilds it for the new site.
+    modify $ \yed -> yed { yedSite = newSite, yedMiddleware = newMiddleware, yedRunnerEnv = Nothing }
 
 -- | Sets a cookie
 --
@@ -697,7 +755,7 @@ getRequestBodyPreview RequestBuilderData{..} =
         getRequestTextPreview :: BSL8.ByteString -> T.Text
         getRequestTextPreview body =
           let characterLimit = 1024
-              textBody = TL.toStrict $ decodeUtf8 body
+              textBody = TL.toStrict $ decodeUtf8With TErr.lenientDecode body
           in if T.length textBody < characterLimit
                 then textBody
                 else T.take characterLimit textBody <> "... (use `rbdPostData` from `yedRequest` to see complete request body)"
@@ -1187,7 +1245,10 @@ addToken_ scope = do
   matches <- htmlQuery' rbdResponse ["Tried to get CSRF token with addToken'"] $ scope <> " input[name=_token][type=hidden][value]"
   case matches of
     [] -> failure $ "No CSRF token found in the current page"
-    element:[] -> addPostParam "_token" $ head $ attribute "value" $ parseHTML element
+    element:[] ->
+      case attribute "value" $ parseHTML element of
+        value:_ -> addPostParam "_token" value
+        [] -> failure "Found a CSRF token element, but it had no value attribute"
     _ -> failure $ "More than one CSRF token found in the page"
 
 -- | For responses that display a single form, just lookup the only CSRF token available.
@@ -1393,7 +1454,7 @@ setUrl url' = do
         (const $ error "Test.Hspec.Yesod: No logger available")
         site
         (toTextUrl url')
-    url <- either (error . show) return eurl
+    url <- either (\err -> failure $ "setUrl: failed to render the URL: " <> T.pack (show err)) return eurl
     let (urlPath, urlQuery) = T.break (== '?') url
     YT.SIO.modifySIO $ \rbd -> rbd
         { rbdPath =
@@ -1482,7 +1543,9 @@ addBasicAuthHeader username password =
 -- @since 0.2.0
 formatRequestBuilderDataForDebugging :: RequestBuilderData url site -> T.Text
 formatRequestBuilderDataForDebugging RequestBuilderData{..} =
-    (TE.decodeUtf8 rbdMethod) <> " " <> getEncodedPath rbdPath <> (TE.decodeUtf8 $ H.renderQuery True rbdGets)
+    lenient rbdMethod <> " " <> getEncodedPath rbdPath <> lenient (H.renderQuery True rbdGets)
+  where
+    lenient = TE.decodeUtf8With TErr.lenientDecode
 
 getEncodedPath :: [T.Text] -> T.Text
 getEncodedPath pathSegments =
@@ -1526,7 +1589,8 @@ request reqBuilder = do
 
     let path = getEncodedPath rbdPath
 
-    appNoMiddleware <- mkApplicationFor rbd
+    yre <- getRunnerEnv
+    appNoMiddleware <- mkApplicationFor yre rbd
     let app = middleware appNoMiddleware
 
     -- expire cookies and filter them for the current path. TODO: support max age
@@ -1649,37 +1713,41 @@ request reqBuilder = do
       , queryString = urlQuery
       }
 
--- | Build a WAI 'Application' for the route stored in the request builder.
+-- | Build a WAI 'Application' for the route stored in the request builder,
+-- dispatching against the given (cached) 'YesodRunnerEnv'.
 --
 -- The @url@ type determines the dispatch target: a full 'Route' dispatches
 -- against the whole site, while a nested route fragment dispatches against
 -- just that fragment (see 'setUrlNested'). A request with no URL set is an
 -- error.
 mkApplicationFor
-    :: (MonadIO m, UrlToDispatch url site, Yesod site, HasCallStack)
-    => RequestBuilderData url site
+    :: (MonadIO m, UrlToDispatch url site, HasCallStack)
+    => YesodRunnerEnv site
+    -> RequestBuilderData url site
     -> m Application
-mkApplicationFor rbd = liftIO $ do
+mkApplicationFor yre rbd =
     case rbdUrl rbd of
-        Nothing -> do
+        Nothing -> liftIO $ do
             let msg = mconcat
                     [ "The test tried to make a request, but no URL was specified.\n"
-                    , "Previously, the libary would assume an empty URL to be the default / route.\n"
+                    , "Previously, the library would assume an empty URL to be the default / route.\n"
                     , "Now, you must explicitly set a route in a request."
                     ]
 
             failure msg
-        Just url -> do
-            yre <- mkYesodRunnerEnv (rbdSite rbd)
+        Just url ->
             pure $ urlToDispatch url yre
 
 
 parseSetCookies :: [H.Header] -> [Cookie.SetCookie]
 parseSetCookies headers = map (Cookie.parseSetCookie . snd) $ DL.filter (("Set-Cookie"==) . fst) $ headers
 
--- Yes, just a shortcut
+-- Yes, just a shortcut. 'withFrozenCallStack' so the assertion is blamed on
+-- the caller of 'failure' rather than on this line.
 failure :: (HasCallStack, MonadIO a) => T.Text -> a b
-failure reason = (liftIO $ HUnit.assertFailure $ T.unpack reason) >> error ""
+failure reason = withFrozenCallStack $ do
+    _ <- liftIO $ HUnit.assertFailure $ T.unpack reason
+    error "Test.Hspec.Yesod.failure: assertFailure returned instead of throwing"
 
 type YSpec site = SpecWith (YesodExampleData site)
 
@@ -1692,6 +1760,7 @@ siteToYesodExampleData site =
     YesodExampleData
         { yedMiddleware = id
         , yedSite = site
+        , yedRunnerEnv = Nothing
         , yedCookies = M.empty
         , yedRequest = Nothing
         , yedResponse = Nothing
