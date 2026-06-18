@@ -1,0 +1,8 @@
+packages: .
+
+-- TEMP / TODO: remove once a fixed megaparsec is on Hackage.
+-- megaparsec-9.8.0 fails to compile ("Variable not in scope" in
+-- Text.Megaparsec.Stream); the cabal solver pulls it in transitively via
+-- yesod-form. Pin below it so CI (and local builds) pick the last good 9.7.x.
+-- Track for removal when megaparsec >= 9.8.1 (or a fixed 9.8.0 revision) ships.
+constraints: megaparsec < 9.8
