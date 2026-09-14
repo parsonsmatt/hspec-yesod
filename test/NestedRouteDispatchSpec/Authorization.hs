@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module NestedRouteDispatchSpec.Authorization where
 
@@ -15,6 +16,7 @@ data AuthorizationResult a
     = Allowed a
     | Denied Text
     | LoginRequired
+    deriving (Eq, Show)
 
 requireAuthorized :: Authorize route => WithParentArgs route -> HandlerFor (ParentSite route) Text
 requireAuthorized route = do
@@ -23,3 +25,15 @@ requireAuthorized route = do
         Allowed value -> pure value
         Denied message -> permissionDenied message
         LoginRequired -> notAuthenticated
+
+-- Pin the concrete handler type promised by the hook, including its 405 arm.
+withAuthorization
+    :: Authorize route
+    => WithParentArgs route
+    -> HandlerFor (ParentSite route) TypedContent
+    -> HandlerFor (ParentSite route) TypedContent
+withAuthorization route handler = requireAuthorized route >> handler
+
+routeAuthOpts :: RouteOpts -> RouteOpts
+routeAuthOpts = setRouteHandlerWrapper
+    (\handler route -> [| withAuthorization $route $handler |])

@@ -16,10 +16,15 @@
 -- instance. The handlers for the datatype are defined here as well.
 -- It also defines the @Authorize FooR@ instance using the application-owned
 -- class and result type in "NestedRouteDispatchSpec.Authorization".
--- 'setRouteHandlerWrapper' wraps the handler with
--- @requireAuthorized (WithParentArgs parentArgs fragment) >> handler@.
+-- 'setRouteHandlerWrapper' supplies the matched 'WithParentArgs' and a
+-- 'TypedContent' handler to @withAuthorization@, which calls
+-- @requireAuthorized route >> handler@.
 -- This option belongs on the splice generating the fragment dispatcher,
 -- so authorization also runs when testing that fragment directly.
+-- Foo also enables named subtree authorization, allowing tests to check its
+-- ordering relative to the class-based wrapper. "NestedRouteDispatchSpec.Account.Handler"
+-- defines a second fragment with tuple parent arguments and its own wrapper
+-- instance, without importing Foo's handlers or authorizers.
 --
 -- A developer could combine the prior two modules: defining both the route
 -- datatype and the handlers for that datatype in the same location. This
@@ -32,16 +37,21 @@
 -- 'mkYesodDataOpts' for the entire 'App'. Then we can provide the
 -- @instance Yesod App@, which is required for running tests. This also
 -- gives us instances of 'ToParentRoute' since this is where the full
--- @'Route' App@ is fully defined. This module needs to import the 'FooR'
--- type, otherwise it will be regenerated and you'll get weird errors.
--- The 'Yesod' instance does not import any authorizers; the fragment
--- dispatcher handles authorization using the wrapper above.
+-- @'Route' App@ is fully defined. This module imports the 'FooR' and
+-- 'AccountR' types so they are reused instead of regenerated.
+-- The 'Yesod' instance imports no authorizers. Its legacy authorization
+-- method records calls and can deny a request, letting tests establish that
+-- it still runs before the fragment's named authorizer and wrapper.
 --
--- Finally, we have "NestedRouteDispatchSpec.Foo.HandlerSpec". This module
--- writes a test against the 'FooIndexR' route. This module depends on the
--- @instance Yesod App@ and the specific handlers, but it does not depend
--- on any other handlers or authorizers in order for the test to work.
+-- Finally, "NestedRouteDispatchSpec.Foo.HandlerSpec" and
+-- "NestedRouteDispatchSpec.Account.HandlerSpec" exercise their fragments
+-- through 'YesodDispatchNested'. Each imports @instance Yesod App@ and its
+-- own dispatcher, without the whole-site dispatcher or sibling authorizers.
 --
--- With this feature set, we can now write tests that only depend on the
--- handlers we actually need to call!
+-- "NestedRouteDispatchSpec.WholeSiteSpec" separately imports the whole-site
+-- dispatcher to check delegation and subsite mounts. "NestedRouteDispatchSpec.InlineSpec"
+-- checks flat and inline compatibility dispatch, and
+-- "NestedRouteDispatchSpec.AuthorizationTHSpec" checks the public TH API.
+-- All specs run in the existing test suite. See the adjacent
+-- @NestedRouteDispatchSpec/README.md@ for the authorization regression matrix.
 module NestedRouteDispatchSpec where

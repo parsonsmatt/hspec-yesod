@@ -48,6 +48,10 @@ import qualified Data.Text as T
 import Yesod.Test.Internal (contentTypeHeaderIsUtf8)
 
 import qualified NestedRouteDispatchSpec.Foo.HandlerSpec
+import qualified NestedRouteDispatchSpec.Account.HandlerSpec
+import qualified NestedRouteDispatchSpec.WholeSiteSpec
+import qualified NestedRouteDispatchSpec.InlineSpec
+import qualified NestedRouteDispatchSpec.AuthorizationTHSpec
 
 parseQuery_ :: Text -> [[SelectorGroup]]
 parseQuery_ = either error id . parseQuery
@@ -70,6 +74,10 @@ mkYesod "RoutedApp" [parseRoutes|
 main :: IO ()
 main = hspec $ do
     describe "NestedRouteDispatchSpec.Foo.HandlerSpec" NestedRouteDispatchSpec.Foo.HandlerSpec.spec
+    describe "NestedRouteDispatchSpec.Account.HandlerSpec" NestedRouteDispatchSpec.Account.HandlerSpec.spec
+    describe "NestedRouteDispatchSpec.WholeSiteSpec" NestedRouteDispatchSpec.WholeSiteSpec.spec
+    describe "NestedRouteDispatchSpec.InlineSpec" NestedRouteDispatchSpec.InlineSpec.spec
+    describe "NestedRouteDispatchSpec.AuthorizationTHSpec" NestedRouteDispatchSpec.AuthorizationTHSpec.spec
     describe "CSS selector parsing" $ do
         it "elements" $ parseQuery_ "strong" @?= [[DeepChildren [ByTagName "strong"]]]
         it "child elements" $ parseQuery_ "strong > i" @?= [[DeepChildren [ByTagName "strong"], DirectChildren [ByTagName "i"]]]

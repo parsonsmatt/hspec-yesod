@@ -9,6 +9,8 @@ module NestedRouteDispatchSpec.Foo.Handler where
 import NestedRouteDispatchSpec.Foo.Route
 import NestedRouteDispatchSpec.Resources
 import NestedRouteDispatchSpec.Authorization
+import NestedRouteDispatchSpec.Subsite.Route
+import NestedRouteDispatchSpec.Subsite.Handler ()
 import qualified Data.Text as Text
 import Data.Text (Text)
 import qualified Network.Wai as W
@@ -28,18 +30,36 @@ instance Authorize FooR where
                   && canWrite /= Just "yes" -> Denied "Writes require permission"
             _ -> Allowed "permission granted"
 
+authorizeFooR :: Int -> FooR -> RouteAuthorizer App
+authorizeFooR parent route = RouteAuthorizer $ \_ -> do
+    recordEvent NamedAuthorizing
+    addHeader "X-Named-Route" (Text.pack (show (parent, route)))
+    deny <- lookupHeader "X-Deny-Named"
+    pure $ case deny of
+        Just "yes" -> Unauthorized "Named denied"
+        Just "login" -> AuthenticationRequired
+        _ -> Authorized
+
+authorizeFooMountR :: Int -> Int -> RouteAuthorizer App
+authorizeFooMountR parent mount = RouteAuthorizer $ \isWrite -> do
+    recordEvent NamedAuthorizing
+    allowWrite <- lookupHeader "X-Allow-Write"
+    pure $ if parent == 1 && mount == 2 && (not isWrite || allowWrite == Just "yes")
+        then Authorized else Unauthorized "Mount denied"
+
+getFooSub :: App -> Int -> Int -> AuthSub
+getFooSub _ _ _ = AuthSub
+
 mkYesodDispatchOpts
-    (setRouteHandlerWrapper
-        (\handler route -> [| requireAuthorized $route >> $handler |])
-        (nestDefaultOptsFor "FooR"))
+    (routeAuthOpts $ setRouteAuthorization RouteAuthSubtree $ nestDefaultOptsFor "FooR")
     "App"
     resources
 
 getFooIndexR :: Int -> HandlerFor App Text
 getFooIndexR i = recordEvent Handling >> pure ("getFooIndexR: " <> Text.pack (show i))
 
-postFooIndexR :: Int -> HandlerFor App Text
-postFooIndexR i = recordEvent Handling >> pure ("postFooIndexR: " <> Text.pack (show i))
+postFooIndexR :: Int -> HandlerFor App Html
+postFooIndexR i = recordEvent Handling >> pure (toHtml ("postFooIndexR: " <> Text.pack (show i)))
 
 getFooEditR :: Int -> HandlerFor App Text
 getFooEditR i = recordEvent Handling >> pure ("getFooEditR: " <> Text.pack (show i))
@@ -52,3 +72,6 @@ getFooFilesR _ pieces = recordEvent Handling >> pure (Text.intercalate "/" piece
 
 getFooLoginRequiredR :: Int -> HandlerFor App Text
 getFooLoginRequiredR _ = recordEvent Handling >> pure "private"
+
+getFooErrorR :: Int -> HandlerFor App Text
+getFooErrorR _ = recordEvent Handling >> invalidArgs ["Handler failed"]
