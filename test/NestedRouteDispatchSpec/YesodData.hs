@@ -13,4 +13,10 @@ import Yesod.Core
 
 mkYesodDataOpts nestDefaultOpts "App" resources
 
-instance Yesod App
+-- No authorization instances or handlers are imported by the foundation.
+instance Yesod App where
+    messageLoggerSource = mempty
+    makeSessionBackend _ = pure Nothing
+    yesodMiddleware handler = do
+        recordEvent Middleware
+        defaultYesodMiddleware handler

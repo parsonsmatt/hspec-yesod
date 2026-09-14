@@ -7,5 +7,8 @@ packages:
 allow-newer: true
 
 extra-deps:
-  - yesod-core-1.7.0.0
+  # Validate fragment authorization against https://github.com/yesodweb/yesod/pull/1931.
+  - git: https://github.com/yesodweb/yesod.git
+    commit: e9005708262caae5d6f41b89638e9e6357d78f18
+    subdir: yesod-core
   - encoding-0.10.2

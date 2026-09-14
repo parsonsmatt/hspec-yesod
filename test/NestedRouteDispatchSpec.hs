@@ -7,13 +7,19 @@
 -- we'll use for the rest of the code generation.
 --
 -- Second, "NestedRouteDispatchSpec.Foo.Route" imports the @resources@
--- above and calls @'mkYesodDataOpts' (mkRouteOpts (Just "FooR")) "App"
+-- above and calls @'mkYesodDataOpts' (nestDefaultOptsFor "FooR") "App"
 -- resources@. This generates the code for the nested route fragment
 -- @FooR@.
 --
 -- Third, "NestedRouteDispatchSpec.Foo.Handler" imports the @resources@ and
 -- the @FooR@ route datatype, and creates the 'YesodDispatchNested'
 -- instance. The handlers for the datatype are defined here as well.
+-- It also defines the @Authorize FooR@ instance using the application-owned
+-- class and result type in "NestedRouteDispatchSpec.Authorization".
+-- 'setRouteHandlerWrapper' wraps the handler with
+-- @requireAuthorized (WithParentArgs parentArgs fragment) >> handler@.
+-- This option belongs on the splice generating the fragment dispatcher,
+-- so authorization also runs when testing that fragment directly.
 --
 -- A developer could combine the prior two modules: defining both the route
 -- datatype and the handlers for that datatype in the same location. This
@@ -28,11 +34,13 @@
 -- gives us instances of 'ToParentRoute' since this is where the full
 -- @'Route' App@ is fully defined. This module needs to import the 'FooR'
 -- type, otherwise it will be regenerated and you'll get weird errors.
+-- The 'Yesod' instance does not import any authorizers; the fragment
+-- dispatcher handles authorization using the wrapper above.
 --
 -- Finally, we have "NestedRouteDispatchSpec.Foo.HandlerSpec". This module
 -- writes a test against the 'FooIndexR' route. This module depends on the
 -- @instance Yesod App@ and the specific handlers, but it does not depend
--- on any other handlers in order for the test to work.
+-- on any other handlers or authorizers in order for the test to work.
 --
 -- With this feature set, we can now write tests that only depend on the
 -- handlers we actually need to call!

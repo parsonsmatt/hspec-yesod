@@ -54,6 +54,7 @@ test-suite test
     main-is: main.hs
     other-modules:
        NestedRouteDispatchSpec
+       NestedRouteDispatchSpec.Authorization
        NestedRouteDispatchSpec.Resources
        NestedRouteDispatchSpec.Foo.Route
        NestedRouteDispatchSpec.Foo.Handler
@@ -71,7 +72,7 @@ test-suite test
                           , bytestring
                           , containers
                           , html-conduit
-                          , yesod-core
+                          , yesod-core >= 1.7.1.0
                           , yesod-form >= 1.6
                           , text
                           , wai

@@ -1,5 +1,12 @@
 packages: .
 
+-- Validate fragment authorization against https://github.com/yesodweb/yesod/pull/1931.
+source-repository-package
+  type: git
+  location: https://github.com/yesodweb/yesod.git
+  tag: e9005708262caae5d6f41b89638e9e6357d78f18
+  subdir: yesod-core
+
 -- TEMP / TODO: remove once a fixed megaparsec is on Hackage.
 -- megaparsec-9.8.0 fails to compile ("Variable not in scope" in
 -- Text.Megaparsec.Stream); the cabal solver pulls it in transitively via
