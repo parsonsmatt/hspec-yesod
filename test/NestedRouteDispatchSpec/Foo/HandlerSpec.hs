@@ -7,13 +7,16 @@ module NestedRouteDispatchSpec.Foo.HandlerSpec where
 import Control.Monad (forM_)
 import Data.Proxy (Proxy(..))
 import Data.Text (Text)
+import Data.IORef
+import qualified Data.Map as Map
 import NestedRouteDispatchSpec.Assertions
 import NestedRouteDispatchSpec.Foo.Handler () -- need YesodDispatchNested FooR instance
 import NestedRouteDispatchSpec.Resources (App(..), Event(..), newApp)
 import NestedRouteDispatchSpec.Foo.Route (FooR(..))
 import NestedRouteDispatchSpec.Subsite.Route
 import NestedRouteDispatchSpec.YesodData () -- need Yesod App instance
-import Yesod.Core (WithParentArgs(..), RedirectUrl(..), UrlToDispatch(..), toWaiAppYreNested)
+import Yesod.Core (WithParentArgs(..), RedirectUrl(..), UrlToDispatch(..), toWaiAppYreNested, liftIO)
+import qualified Test.Hspec as Hspec
 import Test.Hspec.Yesod
 import Test.Hspec (Spec, before, it)
 
@@ -148,14 +151,21 @@ spec = do
             statusIs 303
             assertHeader "Location" "/"
             eventsShouldBe [Middleware, LegacyAuthorizing, NamedAuthorizing, MiddlewareFinished]
+            site <- getTestYesod
+            liftIO $ Map.lookup "_ULT" <$> readIORef (appSession site)
+                `Hspec.shouldReturn` Just "/foo/1"
 
         it "preserves named authentication failures for JSON requests" $ do
+            site <- getTestYesod
+            liftIO $ writeIORef (appSession site) (Map.singleton "_ULT" "/previous")
             request $ do
                 setUrlNested 1 FooIndexR
                 addRequestHeader ("X-Deny-Named", "login")
                 addRequestHeader ("Accept", "application/json")
             statusIs 401
             eventsShouldBe namedDeniedEvents
+            liftIO $ Map.lookup "_ULT" <$> readIORef (appSession site)
+                `Hspec.shouldReturn` Just "/previous"
 
         it "finishes middleware and renders handler errors without reauthorizing" $ do
             get (WithParentArgs 1 FooErrorR)
@@ -250,3 +260,17 @@ spec = do
                     addRequestHeader ("X-Treat-As-Write", "yes")
                 statusIs status
                 eventsShouldBe [Middleware, NamedAuthorizing, MiddlewareFinished, ErrorRendering]
+
+    before (siteToYesodExampleData . (\site -> site { appLoginEnabled = False }) <$> newApp) $
+        forM_ ["text/html", "application/json"] $ \accept ->
+            it ("denies named authentication without a login route for " ++ show accept) $ do
+                site <- getTestYesod
+                liftIO $ writeIORef (appSession site) (Map.singleton "_ULT" "/previous")
+                request $ do
+                    setUrlNested 1 FooIndexR
+                    addRequestHeader ("X-Deny-Named", "login")
+                    addRequestHeader ("Accept", accept)
+                statusIs 401
+                eventsShouldBe namedDeniedEvents
+                liftIO $ Map.lookup "_ULT" <$> readIORef (appSession site)
+                    `Hspec.shouldReturn` Just "/previous"

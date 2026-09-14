@@ -12,6 +12,8 @@ import NestedRouteDispatchSpec.Foo.Handler (authorizeFooMountR)
 import NestedRouteDispatchSpec.Foo.Route (FooR(..))
 import NestedRouteDispatchSpec.Account.Handler ()
 import NestedRouteDispatchSpec.Account.Route (AccountR(..))
+import NestedRouteDispatchSpec.Static.Handler ()
+import NestedRouteDispatchSpec.Static.Route (StaticR(..))
 import NestedRouteDispatchSpec.Authorization (routeAuthOpts)
 import NestedRouteDispatchSpec.Subsite.Route
 import NestedRouteDispatchSpec.Resources

@@ -5,10 +5,72 @@ module NestedRouteDispatchSpec.AuthorizationTHSpec (spec) where
 
 import Data.IORef
 import Data.Maybe (listToMaybe)
-import Language.Haskell.TH (listE, litE, Lit(IntegerL), recover, runIO)
+import Control.Monad (forM_)
+import Language.Haskell.TH (listE, litE, Lit(..), recover, runIO)
 import NestedRouteDispatchSpec.Resources (App)
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Yesod.Core
+import Yesod.Routes.TH.Types (Resource(..), ResourceTree(..), Dispatch(..))
+import qualified Yesod.EmbeddedStatic as Embedded
+
+type RawSubsite = WaiSubsite
+type SubsiteAlias a = a
+type EmbeddedAlias = Embedded.EmbeddedStatic
+
+-- The type name alone must not cause a false positive for a user's own type.
+data EmbeddedStatic = EmbeddedStatic
+data Phantom a = Phantom
+
+$(pure [])
+
+mountFailures :: [(String, [([Bool], [Bool])])]
+mountFailures = $(do
+    let mount sub = ResourceLeaf (Resource "MountR" [] (Subsite sub "getSub") [] True)
+        nested sub = [ResourceParent "MountParentR" True mempty [] [mount sub]]
+        generate opts sub =
+            [ mkYesodDispatchOpts opts "App" [mount sub]
+            , mkYesodDispatchOpts opts "App" (nested sub)
+            , mkYesodDispatchOpts (setFocusOnNestedRoute "MountParentR" opts) "App" (nested sub)
+            , mkYesodDispatchOpts opts "Phantom a" (nested sub)
+            ]
+        wrapper = setRouteHandlerWrapper (\handler _ -> handler)
+        options bypasses =
+            [ (defaultOpts, False)
+            , (wrapper defaultOpts, True)
+            , (setRouteAuthorization RouteAuthPerResource defaultOpts, bypasses)
+            , (setRouteAuthorization RouteAuthSubtree defaultOpts, bypasses)
+            , (wrapper $ setRouteAuthorization RouteAuthPerResource defaultOpts, bypasses)
+            ]
+        types =
+            [ ("WaiSubsite", True)
+            , ("RawSubsite", True)
+            , ("(SubsiteAlias WaiSubsite)", True)
+            , ("(SubsiteAlias (SubsiteAlias WaiSubsite))", True)
+            , ("Embedded.EmbeddedStatic", True)
+            , ("EmbeddedAlias", True)
+            , ("WaiSubsiteWithAuth", False)
+            , ("(SubsiteAlias (SubsiteAlias WaiSubsiteWithAuth))", False)
+            , ("EmbeddedStatic", False)
+            ]
+        rejects action = recover [| True |] (action >> [| False |])
+        row sub (opts, expected) =
+            [| ($(listE (map rejects (generate opts sub))), replicate 4 expected) |]
+    listE
+        [ [| ($(litE $ StringL sub), $(listE $ map (row sub) (options bypasses))) |]
+        | (sub, bypasses) <- types ])
+
+dataOnlyMounts :: Bool
+dataOnlyMounts = $(recover [| False |] $ do
+    let opts = setRouteHandlerWrapper (\_ _ -> fail "data-only callback ran") $
+            setRouteAuthorization RouteAuthPerResource defaultOpts
+        resources = [parseRoutes|
+/ DataR GET
+/raw RawR WaiSubsite getRaw
+/embedded EmbeddedR Embedded.EmbeddedStatic getEmbedded
+|]
+    _ <- mkYesodDataOpts opts "App" resources
+    _ <- mkYesodSubDataOpts opts "App" resources
+    [| True |])
 
 -- Use only the published API. Default controls rule out unrelated generation
 -- failures; enabling either unsupported subsite option must fail in Q.
@@ -56,6 +118,12 @@ callbackCounts = $(do
 
 spec :: Spec
 spec = describe "public authorization TH API" $ do
+    forM_ mountFailures $ \(subsite, results) ->
+        forM_ (zip ["defaults", "wrapper only", "per resource", "subtree", "named and wrapper"] results) $ \(policy, (actual, expected)) ->
+            it (subsite ++ " mount under " ++ policy ++ " in flat/nested/focused/inline dispatch") $
+                actual `shouldBe` expected
+    it "skips dispatch validation in data splices with shared authorization options" $
+        dataOnlyMounts `shouldBe` True
     it "keeps default subsite dispatch generation available" $
         listToMaybe subsiteFailures `shouldBe` Just [False, False]
     it "rejects per-resource authorization in both subsite entry points" $

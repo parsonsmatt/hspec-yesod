@@ -25,6 +25,8 @@
 -- ordering relative to the class-based wrapper. "NestedRouteDispatchSpec.Account.Handler"
 -- defines a second fragment with tuple parent arguments and its own wrapper
 -- instance, without importing Foo's handlers or authorizers.
+-- "NestedRouteDispatchSpec.Static.Handler" does the same with no parent
+-- captures, combining a named resource policy with the class wrapper.
 --
 -- A developer could combine the prior two modules: defining both the route
 -- datatype and the handlers for that datatype in the same location. This
@@ -37,14 +39,15 @@
 -- 'mkYesodDataOpts' for the entire 'App'. Then we can provide the
 -- @instance Yesod App@, which is required for running tests. This also
 -- gives us instances of 'ToParentRoute' since this is where the full
--- @'Route' App@ is fully defined. This module imports the 'FooR' and
--- 'AccountR' types so they are reused instead of regenerated.
+-- @'Route' App@ is fully defined. This module imports the 'FooR', 'AccountR',
+-- and 'StaticR' types so they are reused instead of regenerated.
 -- The 'Yesod' instance imports no authorizers. Its legacy authorization
 -- method records calls and can deny a request, letting tests establish that
 -- it still runs before the fragment's named authorizer and wrapper.
 --
--- Finally, "NestedRouteDispatchSpec.Foo.HandlerSpec" and
--- "NestedRouteDispatchSpec.Account.HandlerSpec" exercise their fragments
+-- Finally, "NestedRouteDispatchSpec.Foo.HandlerSpec",
+-- "NestedRouteDispatchSpec.Account.HandlerSpec", and
+-- "NestedRouteDispatchSpec.Static.HandlerSpec" exercise their fragments
 -- through 'YesodDispatchNested'. Each imports @instance Yesod App@ and its
 -- own dispatcher, without the whole-site dispatcher or sibling authorizers.
 --

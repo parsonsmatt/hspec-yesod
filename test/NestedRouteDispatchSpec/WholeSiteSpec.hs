@@ -5,6 +5,7 @@ module NestedRouteDispatchSpec.WholeSiteSpec (spec) where
 import Control.Monad (forM_)
 import NestedRouteDispatchSpec.Assertions
 import NestedRouteDispatchSpec.Foo.Route
+import NestedRouteDispatchSpec.Account.Route
 import NestedRouteDispatchSpec.Resources
 import NestedRouteDispatchSpec.Subsite.Route
 import NestedRouteDispatchSpec.YesodData
@@ -37,6 +38,13 @@ spec = before (siteToYesodExampleData <$> newApp) $ do
         get (FooR 3 FooIndexR)
         statusIs 403
         eventsShouldBe wrapperDeniedEvents
+
+    it "uses the delegated fragment's own named policy setting" $ do
+        -- Account's splice has only the class wrapper, even though this root
+        -- splice enables RouteAuthPerResource. No authorizeAccountItemR exists.
+        get (OrgR 1 (AccountR "alice" (AccountItemR 2)))
+        statusIs 200
+        eventsShouldBe [Middleware, LegacyAuthorizing, Authorizing, Handling, MiddlewareFinished]
 
     it "authorizes a flat subsite mount" $ do
         get (MountR 2 PageR)

@@ -8,7 +8,7 @@ import Yesod.Core (liftIO)
 
 eventsShouldBe :: [Event] -> YesodExample App ()
 eventsShouldBe expected = do
-    App events <- getTestYesod
+    events <- appEvents <$> getTestYesod
     liftIO $ readIORef events `shouldReturn` expected
 
 authorizedEvents :: [Event]

@@ -28,6 +28,8 @@ mkYesodOpts
     "InlineApp a" [parseRoutes|
 / RootR GET POST
 /any AnyR
+/static StaticR:
+    /leaf StaticLeafR GET POST
 /org/#Int OrgR:
     /account/#Text AccountR:
         /item/#Int ItemR GET POST
@@ -64,6 +66,15 @@ authorizeRootR = RouteAuthorizer $ \_ -> do
     deny <- lookupHeader "X-Deny-Named"
     pure $ if deny == Just "yes" then Unauthorized "Named denied" else Authorized
 authorizeAnyR = authorizeRootR
+
+authorizeStaticR :: StaticR -> RouteAuthorizer (InlineApp a)
+authorizeStaticR StaticLeafR = authorizeRootR
+
+getStaticLeafR :: HandlerFor (InlineApp a) Text
+getStaticLeafR = record Handling >> pure "static read"
+
+postStaticLeafR :: HandlerFor (InlineApp a) Html
+postStaticLeafR = record Handling >> pure (toHtml ("static write" :: Text))
 
 -- Deliberately no authorizeItemR or authorizeFilesR bindings. The old inline
 -- implementation demanded those instead of the enclosing subtree's policy.
@@ -147,6 +158,27 @@ spec = before (siteToYesodExampleData . InlineApp <$> newIORef []) $ do
         statusIs 200
         bodyEquals "any method"
         eventsShouldBe allowed
+
+    it "uses a subtree binding with no parent captures in inline dispatch" $ do
+        get (concreteRoute $ StaticR StaticLeafR)
+        statusIs 200
+        bodyEquals "static read"
+        eventsShouldBe allowed
+
+    it "normalizes the static subtree's Html handler" $ do
+        post (concreteRoute $ StaticR StaticLeafR)
+        statusIs 200
+        bodyEquals "static write"
+        eventsShouldBe allowed
+
+    forM_ [Nothing, Just "yes"] $ \denial ->
+        it ("checks the static subtree's named policy before a 405: " ++ show denial) $ do
+            request $ do
+                setUrl (concreteRoute $ StaticR StaticLeafR)
+                setMethod "DELETE"
+                forM_ denial $ \value -> addRequestHeader ("X-Deny-Named", value)
+            statusIs $ maybe 405 (const 403) denial
+            eventsShouldBe $ maybe wrapperFailure (const namedFailure) denial
 
     it "passes the full captured route to the inline wrapper" $ do
         get (concreteRoute $ OrgR 1 (AccountR "alice" (ItemR 2)))

@@ -61,6 +61,9 @@ test-suite test
        NestedRouteDispatchSpec.Account.Route
        NestedRouteDispatchSpec.Account.Handler
        NestedRouteDispatchSpec.Account.HandlerSpec
+       NestedRouteDispatchSpec.Static.Route
+       NestedRouteDispatchSpec.Static.Handler
+       NestedRouteDispatchSpec.Static.HandlerSpec
        NestedRouteDispatchSpec.Subsite.Route
        NestedRouteDispatchSpec.Subsite.Handler
        NestedRouteDispatchSpec.WholeSiteSpec
@@ -85,6 +88,7 @@ test-suite test
                           , yesod-core >= 1.7.1.0
                           , template-haskell
                           , yesod-form >= 1.6
+                          , yesod-static >= 1.6
                           , text
                           , wai
                           , wai-extra

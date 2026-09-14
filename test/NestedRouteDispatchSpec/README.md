@@ -10,14 +10,14 @@ cabal test all --test-show-details=direct
 stack test
 ```
 
-`Foo.HandlerSpec` and `Account.HandlerSpec` dispatch directly to their
+`Foo.HandlerSpec`, `Account.HandlerSpec`, and `Static.HandlerSpec` dispatch directly to their
 `YesodDispatchNested` instances using `get`, `setUrl`, and `setUrlNested`.
-Neither imports the whole-site dispatcher or its sibling's authorizers, even
+None imports the whole-site dispatcher or a sibling's authorizers, even
 transitively. The foundation in `YesodData` imports only route data and records
 legacy authorization calls without depending on fragment authorizers.
 `WholeSiteSpec` separately checks the assembled application's dispatch.
 
-## Review findings
+## First review pass
 
 | Finding | Regression coverage |
 | --- | --- |
@@ -36,11 +36,29 @@ wrapper 401/403 responses, handler errors without reauthorization, and changed
 captures or permissions across successive requests. Response status, body or
 headers, and event traces establish both the result and whether the handler ran.
 
+## Second review pass
+
+| Finding | Regression coverage |
+| --- | --- |
+| #1: Named mount checks on subsites that bypass the runner | `AuthorizationTHSpec` checks the real `WaiSubsite` and `EmbeddedStatic` types, qualified names, and ordinary, applied, and repeated aliases. Default options remain accepted; named checks are rejected in flat, generated nested, focused, and inline dispatch. `WaiSubsiteWithAuth`, its repeated alias, and an unrelated local type named `EmbeddedStatic` are accepted controls. |
+| #2: Handler wrappers did not cover mounts | The same matrix requires wrapper-only mounts to fail and named policies with wrappers to accept subsites that honor the runner. Runtime mount cases continue to check the named policy and its 404 behavior. |
+| #3 and #4: Authorization scope was unclear | The inline fixture compiles without an ancestor `authorizeOrgR`; only its nearest subtree policy is required. `WholeSiteSpec` dispatches into Account's wrapper-only instance from a root using `RouteAuthPerResource`, proving that the child splice owns its policy. No `authorizeAccountItemR` binding exists. |
+| #6: Named authentication and sessions | `Foo.HandlerSpec` checks the saved `_ULT` destination after an HTML redirect, preserves an existing destination for JSON 401s, and checks both response formats when there is no login route. |
+| #7: Missing-route write-policy fallback | The first-pass method matrix already reaches this branch through flat and nested subsite 404s. The guide now states the fallback explicitly. |
+| #9: Data-only splices ran dispatch codegen | Shared options include a callback that throws and named policies on raw WAI and embedded mounts. Both public data-only splices must succeed without executing the callback or rejecting the dispatch configuration. |
+| #14: Parents without captures | `Static.HandlerSpec` dispatches bare fragments and `WithParentArgs ()`, exercising named resource checks, a concrete class wrapper, heterogeneous handler results, and 405s. `InlineSpec` checks the zero-capture subtree binding as well. |
+| #15: Clearing a wrapper only tested a record update | The existing `WholeSiteSpec` cases execute the cleared root dispatcher, checking allowed and denied named policies and preservation of delegated wrappers. |
+
+The `yesod-static` dependency is test-only. The Cabal project constrains its
+crypton dependencies to versions compatible with its current use of `memory`;
+the separate package migration is tracked outside this authorization change.
+
 ## Tests kept in yesod-core
 
-The custom `mdsRunHandler` regression (#9) uses an internal TH setting that is
+The custom `mdsRunHandler` regression (first-pass #9) uses an internal TH setting that is
 not exposed by the installed package, so its dedicated test stays in
-yesod-core. The rendered Haddock lambda (#15) is checked there as documentation.
+yesod-core, alongside a counter for named runner generation (second-pass #8).
+The rendered Haddock lambda (first-pass #15) is checked there as documentation.
 The unrelated form findings are outside these authorization fixtures.
 
 ## Checking that the regressions are detected
@@ -52,3 +70,7 @@ return 200 and authorized requests would omit `NamedAuthorizing` from their
 event traces. Use a temporary source export and a separate Cabal project/build
 directory for this check; the normal dependency pins should continue to use
 the fixed Yesod revision.
+
+The second-pass mount-validation matrix also compiles against the previous
+Yesod revision. Its rejection expectations must fail there, establishing that
+the new tests detect the formerly accepted configurations.
