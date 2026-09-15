@@ -9,6 +9,6 @@ allow-newer: true
 extra-deps:
   # Validate fragment authorization against https://github.com/yesodweb/yesod/pull/1931.
   - git: https://github.com/yesodweb/yesod.git
-    commit: 787c9879bae5ee692460ecaa0c4ddceaa1631292
+    commit: 158d14224df7fbee6c86c14d580a4fc010d00a64
     subdir: yesod-core
   - encoding-0.10.2
