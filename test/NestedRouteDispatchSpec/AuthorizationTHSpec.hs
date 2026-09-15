@@ -1,5 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module NestedRouteDispatchSpec.AuthorizationTHSpec (spec) where
 
@@ -9,17 +10,30 @@ import Control.Monad (forM_)
 import Language.Haskell.TH (listE, litE, Lit(..), recover, runIO)
 import NestedRouteDispatchSpec.Resources (App)
 import Test.Hspec (Spec, describe, it, shouldBe)
-import Yesod.Core
+import Yesod.Core hiding (WaiSubsite)
+import qualified Yesod.Core as Core
 import Yesod.Routes.TH.Types (Resource(..), ResourceTree(..), Dispatch(..))
 import qualified Yesod.EmbeddedStatic as Embedded
 
-type RawSubsite = WaiSubsite
+-- WaiSubsite's unqualified name is deliberately absent at this dispatch
+-- splice, as it can be in an application importing only its foundation.
+type RawSubsite = Core.WaiSubsite
 type SubsiteAlias a = a
 type EmbeddedAlias = Embedded.EmbeddedStatic
 
 -- The type name alone must not cause a false positive for a user's own type.
 data EmbeddedStatic = EmbeddedStatic
 data Phantom a = Phantom
+
+type family RawFamily a where
+    RawFamily Int = Core.WaiSubsite
+type family NullaryRawFamily where
+    NullaryRawFamily = Core.WaiSubsite
+type family SafeFamily a where
+    SafeFamily Int = WaiSubsiteWithAuth
+type family OpenRawFamily a
+type instance OpenRawFamily Int = Core.WaiSubsite
+type FamilyAlias = RawFamily Int
 
 $(pure [])
 
@@ -43,6 +57,7 @@ mountFailures = $(do
             ]
         types =
             [ ("WaiSubsite", True)
+            , ("Core.WaiSubsite", True)
             , ("RawSubsite", True)
             , ("(SubsiteAlias WaiSubsite)", True)
             , ("(SubsiteAlias (SubsiteAlias WaiSubsite))", True)
@@ -51,6 +66,11 @@ mountFailures = $(do
             , ("WaiSubsiteWithAuth", False)
             , ("(SubsiteAlias (SubsiteAlias WaiSubsiteWithAuth))", False)
             , ("EmbeddedStatic", False)
+            , ("(RawFamily Int)", True)
+            , ("NullaryRawFamily", True)
+            , ("FamilyAlias", True)
+            , ("(OpenRawFamily Int)", True)
+            , ("(SafeFamily Int)", True)
             ]
         rejects action = recover [| True |] (action >> [| False |])
         row sub (opts, expected) =
@@ -85,6 +105,8 @@ subsiteFailures = $(do
             , setRouteAuthorization RouteAuthPerResource defaultOpts
             , setRouteAuthorization RouteAuthSubtree defaultOpts
             , setRouteHandlerWrapper (\handler _ -> handler) defaultOpts
+            , subsiteRouteOpts $ setRouteHandlerWrapper (\_ _ -> fail "cleared callback ran") $
+                setRouteAuthorization RouteAuthPerResource defaultOpts
             ]
         generators opts =
             [ mkYesodSubDispatchInstanceOpts opts "App" resources
@@ -132,6 +154,8 @@ spec = describe "public authorization TH API" $ do
         listToMaybe (drop 2 subsiteFailures) `shouldBe` Just [True, True]
     it "rejects handler wrappers in both subsite entry points" $
         listToMaybe (drop 3 subsiteFailures) `shouldBe` Just [True, True]
+    it "accepts explicitly projected site options in both subsite entry points" $
+        listToMaybe (drop 4 subsiteFailures) `shouldBe` Just [False, False]
     it "does not run wrappers in site data splices" $
         listToMaybe callbackCounts `shouldBe` Just 0
     it "does not run wrappers in subsite data splices" $

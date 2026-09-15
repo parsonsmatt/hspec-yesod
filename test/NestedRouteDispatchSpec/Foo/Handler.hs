@@ -44,8 +44,10 @@ authorizeFooMountR :: Int -> Int -> RouteAuthorizer App
 authorizeFooMountR parent mount = RouteAuthorizer $ \isWrite -> do
     recordEvent NamedAuthorizing
     allowWrite <- lookupHeader "X-Allow-Write"
-    pure $ if parent == 1 && mount == 2 && (not isWrite || allowWrite == Just "yes")
-        then Authorized else Unauthorized "Mount denied"
+    login <- lookupHeader "X-Mount-Login"
+    pure $ if login == Just "yes" then AuthenticationRequired
+        else if parent == 1 && mount == 2 && (not isWrite || allowWrite == Just "yes")
+            then Authorized else Unauthorized "Mount denied"
 
 getFooSub :: App -> Int -> Int -> AuthSub
 getFooSub _ _ _ = AuthSub

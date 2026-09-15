@@ -18,5 +18,9 @@ data AuthSub = AuthSub
 
 mkYesodSubData "AuthSub" [parseRoutes|
 /page PageR GET
+/writable WritableR GET DELETE
 /deep DeepR LeafSub getLeafSub
+/wai WaiR WaiSubsiteWithAuth getAuthWai
+/group GroupR:
+    /wai GroupWaiR WaiSubsiteWithAuth getAuthWai
 |]

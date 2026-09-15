@@ -33,8 +33,10 @@ instance Yesod App where
         pure $ if deny == Just "yes" then Unauthorized "Legacy denied" else Authorized
     isWriteRequest _ = do
         forceWrite <- lookupHeader "X-Treat-As-Write"
+        forceRead <- lookupHeader "X-Treat-As-Read"
         method <- W.requestMethod <$> waiRequest
-        pure $ forceWrite == Just "yes" || method `notElem` ["GET", "HEAD", "OPTIONS", "TRACE"]
+        pure $ forceRead /= Just "yes" &&
+            (forceWrite == Just "yes" || method `notElem` ["GET", "HEAD", "OPTIONS", "TRACE"])
     yesodMiddleware handler = do
         recordEvent Middleware
         defaultYesodMiddleware handler `finally` recordEvent MiddlewareFinished

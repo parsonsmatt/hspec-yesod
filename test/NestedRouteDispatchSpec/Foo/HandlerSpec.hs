@@ -7,6 +7,7 @@ module NestedRouteDispatchSpec.Foo.HandlerSpec where
 import Control.Monad (forM_)
 import Data.Proxy (Proxy(..))
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.IORef
 import qualified Data.Map as Map
 import NestedRouteDispatchSpec.Assertions
@@ -224,6 +225,41 @@ spec = do
                 addRequestHeader ("X-Treat-As-Write", "yes")
             statusIs 403
             eventsShouldBe namedDeniedEvents
+
+        forM_ [("writable", 200), ("missing", 403)] $ \(suffix, status) ->
+            it ("uses a read override only when the subsite route matches: " ++ show suffix) $ do
+                request $ do
+                    setUrl (FooPath ("/foo/1/mount/2/" <> suffix))
+                    setMethod "DELETE"
+                    addRequestHeader ("X-Treat-As-Read", "yes")
+                statusIs status
+                eventsShouldBe $ if status == 200
+                    then [Middleware, LegacyAuthorizing, NamedAuthorizing, Handling, MiddlewareFinished]
+                    else [Middleware, NamedAuthorizing, MiddlewareFinished, ErrorRendering]
+
+        forM_ ["/wai/x", "/group/wai/x"] $ \suffix ->
+            forM_ [(2, 200), (3, 403)] $ \(mount, status) ->
+                it ("authorizes transitive WAI dispatch: " ++ show (suffix, mount)) $ do
+                    get (FooPath ("/foo/1/mount/" <> Text.pack (show (mount :: Int)) <> suffix))
+                    statusIs status
+                    if status == 200 then bodyEquals "guarded WAI" else bodyContains "Mount denied"
+                    eventsShouldBe $ if status == 200
+                        then [Middleware, LegacyAuthorizing, NamedAuthorizing, MiddlewareFinished]
+                        else namedDeniedEvents
+
+        forM_ ["text/html", "application/json"] $ \accept ->
+            it ("enforces login on a subsite 404 and preserves the destination: " ++ show accept) $ do
+                site <- getTestYesod
+                liftIO $ writeIORef (appSession site) (Map.singleton "_ULT" "/previous")
+                request $ do
+                    setUrl (FooPath "/foo/1/mount/2/missing")
+                    addRequestHeader ("X-Mount-Login", "yes")
+                    addRequestHeader ("Accept", accept)
+                statusIs (if accept == "text/html" then 303 else 401)
+                eventsShouldBe $ [Middleware, NamedAuthorizing, MiddlewareFinished] ++
+                    [ErrorRendering | accept == "application/json"]
+                liftIO $ Map.lookup "_ULT" <$> readIORef (appSession site)
+                    `Hspec.shouldReturn` Just "/previous"
 
         it "denies an unauthorized method at a mount before reporting 405" $ do
             request $ do

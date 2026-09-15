@@ -3,6 +3,8 @@
 module NestedRouteDispatchSpec.WholeSiteSpec (spec) where
 
 import Control.Monad (forM_)
+import Data.IORef
+import qualified Data.Map as Map
 import NestedRouteDispatchSpec.Assertions
 import NestedRouteDispatchSpec.Foo.Route
 import NestedRouteDispatchSpec.Account.Route
@@ -11,7 +13,9 @@ import NestedRouteDispatchSpec.Subsite.Route
 import NestedRouteDispatchSpec.YesodData
 import NestedRouteDispatchSpec.YesodDispatch ()
 import Test.Hspec (Spec, before, it)
+import qualified Test.Hspec as Hspec
 import Test.Hspec.Yesod
+import Yesod.Core (liftIO)
 
 spec :: Spec
 spec = before (siteToYesodExampleData <$> newApp) $ do
@@ -46,6 +50,11 @@ spec = before (siteToYesodExampleData <$> newApp) $ do
         statusIs 200
         eventsShouldBe [Middleware, LegacyAuthorizing, Authorizing, Handling, MiddlewareFinished]
 
+    it "retains a separately compiled wrapper's denial under a named parent policy" $ do
+        get (OrgR 9 (AccountR "alice" (AccountItemR 2)))
+        statusIs 403
+        eventsShouldBe [Middleware, LegacyAuthorizing, Authorizing, MiddlewareFinished, ErrorRendering]
+
     it "authorizes a flat subsite mount" $ do
         get (MountR 2 PageR)
         statusIs 200
@@ -70,6 +79,41 @@ spec = before (siteToYesodExampleData <$> newApp) $ do
         get (MountR 3 (DeepR LeafR))
         statusIs 403
         eventsShouldBe namedDeniedEvents
+
+    forM_ [("writable", 200), ("missing", 403)] $ \(suffix, status) ->
+        it ("uses a read override only on matched flat subsite routes: " ++ suffix) $ do
+            request $ do
+                setUrl ("/mount/2/" ++ suffix)
+                setMethod "DELETE"
+                addRequestHeader ("X-Treat-As-Read", "yes")
+            statusIs status
+            eventsShouldBe $ if status == 200
+                then [Middleware, LegacyAuthorizing, NamedAuthorizing, Handling, MiddlewareFinished]
+                else [Middleware, NamedAuthorizing, MiddlewareFinished, ErrorRendering]
+
+    forM_ ["/wai/x", "/group/wai/x"] $ \suffix ->
+        forM_ [(2, 200), (3, 403)] $ \(mount, status) ->
+            it ("authorizes transitive WAI through a flat mount: " ++ show (suffix, mount)) $ do
+                get ("/mount/" ++ show (mount :: Int) ++ suffix)
+                statusIs status
+                if status == 200 then bodyEquals "guarded WAI" else bodyContains "Mount denied"
+                eventsShouldBe $ if status == 200
+                    then [Middleware, LegacyAuthorizing, NamedAuthorizing, MiddlewareFinished]
+                    else namedDeniedEvents
+
+    forM_ ["text/html", "application/json"] $ \accept ->
+        it ("enforces login on a flat subsite 404: " ++ show accept) $ do
+            site <- getTestYesod
+            liftIO $ writeIORef (appSession site) (Map.singleton "_ULT" "/previous")
+            request $ do
+                setUrl ("/mount/2/missing" :: String)
+                addRequestHeader ("X-Mount-Login", "yes")
+                addRequestHeader ("Accept", accept)
+            statusIs (if accept == "text/html" then 303 else 401)
+            eventsShouldBe $ [Middleware, NamedAuthorizing, MiddlewareFinished] ++
+                [ErrorRendering | accept == "application/json"]
+            liftIO $ Map.lookup "_ULT" <$> readIORef (appSession site)
+                `Hspec.shouldReturn` Just "/previous"
 
     forM_ [("/mount/2/missing", 404), ("/mount/3/missing", 403)] $ \(path, status) ->
         it ("checks flat mount authorization on an unmatched subsite path: " ++ path) $ do

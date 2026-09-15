@@ -4,7 +4,7 @@ packages: .
 source-repository-package
   type: git
   location: https://github.com/yesodweb/yesod.git
-  tag: 943c54b22f7d2e7d98b615979d11c729666d3943
+  tag: 787c9879bae5ee692460ecaa0c4ddceaa1631292
   subdir: yesod-core
 
 -- TEMP / TODO: remove once a fixed megaparsec is on Hackage.

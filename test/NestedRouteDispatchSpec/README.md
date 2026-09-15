@@ -10,6 +10,9 @@ cabal test all --test-show-details=direct
 stack test
 ```
 
+The suite contains 274 examples: 209 authorization/dispatch examples and the
+65 other existing examples.
+
 `Foo.HandlerSpec`, `Account.HandlerSpec`, and `Static.HandlerSpec` dispatch directly to their
 `YesodDispatchNested` instances using `get`, `setUrl`, and `setUrlNested`.
 None imports the whole-site dispatcher or a sibling's authorizers, even
@@ -53,6 +56,22 @@ The `yesod-static` dependency is test-only. The Cabal project constrains its
 crypton dependencies to versions compatible with its current use of `memory`;
 the separate package migration is tracked outside this authorization change.
 
+## Third review pass
+
+| Finding | Regression coverage or scope decision |
+| --- | --- |
+| #1: Transitive raw WAI mounts bypass the parent runner | The runner contract now explicitly applies at every level. Raw `WaiSubsite` and `EmbeddedStatic` remain unsupported under named mounts, including transitively; TH cannot inspect arbitrary subsite bodies. Flat and fragment tests cover the supported replacement, `WaiSubsiteWithAuth`, through both `subTopDispatch` and a separately generated `YesodSubDispatchNested` instance, with allow/deny decisions and exact event traces. |
+| #2 and #3: Unresolved mount types and type families escape validation | `AuthorizationTHSpec` hides the unqualified `WaiSubsite` type at the splice and tests qualified controls, aliases, closed/open/nullary families, and even a family reducing to the supported WAI type. Named policies reject unresolved or family types; defaults remain accepted. The existing real `EmbeddedStatic` cases pin its canonical module name. |
+| #4 and #6: Delegated and ancestor policies | Named parent splices now warn at existing fragment boundaries. The root and Account dispatch splices still own distinct policies; whole-site tests check both Account's allow and denial without a resource-named Account authorizer. Nearest-parent subtree selection remains intentional and is documented; ancestor policies are not automatically composed. |
+| #5: Mount hits and misses differ under an override | Flat and fragment tests pair a DELETE hit classified as a read with a DELETE miss using the default write policy. Login-required misses check HTML 303 and JSON 401, preserve `_ULT`, and skip legacy authorization. |
+| #9: Inline PerResource parent argument spine | `InlineResourceSpec` uses two ancestor captures, a captured leaf, and multipieces on a parameterized foundation. Each capture is independently varied; reads, writes, and 405 denial are checked. |
+| #13: Deriving subsite options | `subsiteRouteOpts` is tested through both public subsite dispatch generators. Unprojected site authorization options continue to fail explicitly. |
+
+Documentation fixes also clarify ordering (legacy, named, wrapper, handler),
+the scope of bindings demanded by a named policy, and the public subsite entry
+points. Internal generator hardening and the rendered public Haddock links are
+checked in yesod-core.
+
 ## Tests kept in yesod-core
 
 The custom `mdsRunHandler` regression (first-pass #9) uses an internal TH setting that is
@@ -71,6 +90,9 @@ event traces. Use a temporary source export and a separate Cabal project/build
 directory for this check; the normal dependency pins should continue to use
 the fixed Yesod revision.
 
-The second-pass mount-validation matrix also compiles against the previous
-Yesod revision. Its rejection expectations must fail there, establishing that
-the new tests detect the formerly accepted configurations.
+For the third-pass validation checks, restore only `validateMountType` from
+Yesod `943c54b2` in a temporary source export of the current library. Keep the
+new public option helper so this tests the validator independently of API
+availability. The current suite compiles and fails 24 rejection examples
+(unresolved names and type families); the other 250 examples pass. Restoring
+the current validator makes all 274 pass.
