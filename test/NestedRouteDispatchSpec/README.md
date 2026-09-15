@@ -24,6 +24,9 @@ legacy authorization calls without depending on fragment authorizers.
 class-based hook. Whole-site and direct nested dispatch both check parent and
 leaf captures, unit parent arguments, Text and Html handlers, and authorization
 before 405s. Event traces verify that denied requests do not run handlers.
+The fixture selects `defaultYesodMiddlewareNoAuthCheck`; both dispatch paths
+retain the default response headers and class-based authorization while
+skipping the legacy middleware's `isWriteRequest` call.
 
 ## First review pass
 

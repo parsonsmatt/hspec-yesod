@@ -41,6 +41,10 @@ mkYesodOpts (routeAuthOpts $ setParameterizedSubroute True defaultOpts) "App a" 
 instance Yesod (App a) where
     messageLoggerSource = mempty
     makeSessionBackend _ = pure Nothing
+    yesodMiddleware = defaultYesodMiddlewareNoAuthCheck
+    -- Wrapper-only dispatch must not consult legacy method classification.
+    -- The expected traces below omit this event on both dispatch paths.
+    isWriteRequest _ = record "legacy write" >> pure False
 
 record :: String -> HandlerFor (App a) ()
 record event = do
@@ -78,6 +82,8 @@ checkRequest makeApp method path expectedStatus expectedBody expectedEvents = do
     response <- WT.runSession (WT.request WT.defaultRequest
         { W.requestMethod = method, W.pathInfo = path }) app
     statusCode (WT.simpleStatus response) `shouldBe` expectedStatus
+    lookup "Vary" (WT.simpleHeaders response) `shouldBe` Just "Accept, Accept-Language"
+    lookup "X-XSS-Protection" (WT.simpleHeaders response) `shouldBe` Just "1; mode=block"
     forM_ expectedBody $ \body -> WT.simpleBody response `shouldBe` body
     readIORef events `shouldReturn` expectedEvents
 
