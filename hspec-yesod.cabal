@@ -69,6 +69,7 @@ test-suite test
        NestedRouteDispatchSpec.WholeSiteSpec
        NestedRouteDispatchSpec.InlineSpec
        NestedRouteDispatchSpec.InlineResourceSpec
+       NestedRouteDispatchSpec.ParameterizedHookSpec
        NestedRouteDispatchSpec.Resources
        NestedRouteDispatchSpec.Foo.Route
        NestedRouteDispatchSpec.Foo.Handler

@@ -53,6 +53,7 @@ import qualified NestedRouteDispatchSpec.Static.HandlerSpec
 import qualified NestedRouteDispatchSpec.WholeSiteSpec
 import qualified NestedRouteDispatchSpec.InlineSpec
 import qualified NestedRouteDispatchSpec.InlineResourceSpec
+import qualified NestedRouteDispatchSpec.ParameterizedHookSpec
 import qualified NestedRouteDispatchSpec.AuthorizationTHSpec
 
 parseQuery_ :: Text -> [[SelectorGroup]]
@@ -81,6 +82,7 @@ main = hspec $ do
     describe "NestedRouteDispatchSpec.WholeSiteSpec" NestedRouteDispatchSpec.WholeSiteSpec.spec
     describe "NestedRouteDispatchSpec.InlineSpec" NestedRouteDispatchSpec.InlineSpec.spec
     describe "NestedRouteDispatchSpec.InlineResourceSpec" NestedRouteDispatchSpec.InlineResourceSpec.spec
+    describe "NestedRouteDispatchSpec.ParameterizedHookSpec" NestedRouteDispatchSpec.ParameterizedHookSpec.spec
     describe "NestedRouteDispatchSpec.AuthorizationTHSpec" NestedRouteDispatchSpec.AuthorizationTHSpec.spec
     describe "CSS selector parsing" $ do
         it "elements" $ parseQuery_ "strong" @?= [[DeepChildren [ByTagName "strong"]]]

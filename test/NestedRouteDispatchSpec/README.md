@@ -10,7 +10,7 @@ cabal test all --test-show-details=direct
 stack test
 ```
 
-The suite contains 274 examples: 209 authorization/dispatch examples and the
+The suite contains 288 examples: 223 authorization/dispatch examples and the
 65 other existing examples.
 
 `Foo.HandlerSpec`, `Account.HandlerSpec`, and `Static.HandlerSpec` dispatch directly to their
@@ -19,6 +19,11 @@ None imports the whole-site dispatcher or a sibling's authorizers, even
 transitively. The foundation in `YesodData` imports only route data and records
 legacy authorization calls without depending on fragment authorizers.
 `WholeSiteSpec` separately checks the assembled application's dispatch.
+
+`ParameterizedHookSpec` combines `setParameterizedSubroute True` with the shared
+class-based hook. Whole-site and direct nested dispatch both check parent and
+leaf captures, unit parent arguments, Text and Html handlers, and authorization
+before 405s. Event traces verify that denied requests do not run handlers.
 
 ## First review pass
 
@@ -112,6 +117,6 @@ the fixed Yesod revision.
 For the third-pass validation checks, restore only `validateMountType` from
 Yesod `943c54b2` in a temporary source export of the current library. Keep the
 new public option helper so this tests the validator independently of API
-availability. The current suite compiles and fails 24 rejection examples
-(unresolved names and type families); the other 250 examples pass. Restoring
-the current validator makes all 274 pass.
+availability. At the third-pass checkpoint, the 274-example suite compiled and
+failed 24 rejection examples (unresolved names and type families); the other
+250 examples passed. Restoring the current validator made all 274 pass.
