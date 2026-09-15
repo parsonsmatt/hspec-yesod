@@ -10,7 +10,7 @@ cabal test all --test-show-details=direct
 stack test
 ```
 
-The suite contains 288 examples: 223 authorization/dispatch examples and the
+The suite contains 298 examples: 233 authorization/dispatch examples and the
 65 other existing examples.
 
 `Foo.HandlerSpec`, `Account.HandlerSpec`, and `Static.HandlerSpec` dispatch directly to their
@@ -72,19 +72,19 @@ remain outside the authorization work are tracked separately for followup.
 | --- | --- |
 | #1: Transitive raw WAI mounts bypass the parent runner | The runner contract now explicitly applies at every level. Raw `WaiSubsite` and `EmbeddedStatic` remain unsupported under named mounts, including transitively; TH cannot inspect arbitrary subsite bodies. Flat and fragment tests cover the supported replacement, `WaiSubsiteWithAuth`, through both `subTopDispatch` and a separately generated `YesodSubDispatchNested` instance, with allow/deny decisions and exact event traces. |
 | #2 and #3: Unresolved mount types and type families escape validation | `AuthorizationTHSpec` hides the unqualified `WaiSubsite` type at the splice and tests qualified controls, aliases, closed/open/nullary families, and even a family reducing to the supported WAI type. Named policies reject unresolved or family types; defaults remain accepted. The existing real `EmbeddedStatic` cases pin its canonical module name. |
-| #4: Delegated policies | Named parent splices now warn at existing fragment boundaries. The root and Account dispatch splices still own distinct policies; whole-site tests check both Account's allow and denial without a resource-named Account authorizer. The binding guarantee is explicitly limited to leaves emitted by the owning splice. |
+| #4: Delegated policies | Each fragment keeps its own policy. The root and Account dispatch splices own distinct policies; whole-site tests check both Account's allow and denial without a resource-named Account authorizer. The binding guarantee is explicitly limited to leaves emitted by the owning splice. The warning initially added here was removed in pass 4 because it rejected correct configurations under `-Werror`. |
 | #5: Mount hits and misses differ under an override | Flat and fragment tests pair a DELETE hit classified as a read with a DELETE miss using the default write policy. Login-required misses check HTML 303 and JSON 401, preserve `_ULT`, and skip legacy authorization. |
 | #6: Ancestor policies | Nearest-parent subtree selection remains intentional and is documented. The inline and nested fixtures compile with only the selected subtree bindings; any ancestor access checks must be included in those policies. |
 | #7: Public Haddock links | References use public pages and the explicit `RouteAuthSpec` type anchor. Rendered links on `Yesod.Core`, `Yesod.Core.Types`, and `Yesod.Core.Dispatch` were checked against the generated anchors. |
 | #8: Generic mount validation | `mkDispatchClause` rejects named mounts whose type it cannot inspect. The yesod-core `untypedMountFailures` test retains the default-option control and checks both named policies. |
 | #9: Inline PerResource parent argument spine | `InlineResourceSpec` uses two ancestor captures, a captured leaf, and multipieces on a parameterized foundation. Each capture is independently varied; reads, writes, and 405 denial are checked. |
-| #10: Mount-wrapper remedy | The error, Haddock, and guide explain that enabling a named policy demands bindings for all leaves emitted by the splice. They describe moving mounts into focused route blocks when other leaves should remain wrapper-only. |
+| #10: Mount-wrapper remedy | The error, Haddock, and guide explain that enabling a named policy demands bindings for all leaves emitted by the splice. Pass 4 clarifies that isolating a mount requires a parent containing only that mount; a mount leaf cannot itself be a focus target. |
 | #11: Authorization ordering docs | `RouteAuthSpec` defines the order: default middleware's legacy check, named check, wrapper, handler. Other authorization docs link to it; exact event traces pin the order and denial behavior. |
 | #12: Public subsite entry points | Their Haddocks distinguish rejected site authorization options from skipped options and callbacks in data-only splices, with links to `RouteAuthSpec`. |
 | #13: Deriving subsite options | `subsiteRouteOpts` and rejection share the internal `SiteAuthorization` definition. The projection is tested through both public subsite dispatch generators; unprojected site options continue to fail explicitly. |
 | #14: Duplicated default method dispatch | Default and opt-in dispatch now share method selection and `TypedContent` normalization. Existing legacy routing tests and authorization tests exercise that same code path. |
 | #15: Duplicated subtree state | `NestedPhase` carries the nearest subtree name, removing the independent `envSubtree` field. Existing inline, subtree-policy, and fallthrough fixtures cover the resulting dispatch. |
-| #16: Duplicated mount validation and positional wrapper | `mdsHandlerWrapper` travels beside `mdsRouteAuth`, and both mount-generation paths use `validateMount`. The mount matrix exercises flat, inline, generated nested, and focused dispatch. |
+| #16: Duplicated mount validation and positional wrapper | Both mount-generation paths use `validateMount`. Pass 4 further groups the settings into `mdsSiteAuthorization`, passed intact from `RouteOpts`. The mount matrix exercises flat, inline, generated nested, and focused dispatch. |
 
 Documentation fixes also clarify ordering (legacy, named, wrapper, handler),
 the scope of bindings demanded by a named policy, and the public subsite entry
@@ -95,6 +95,26 @@ The related notes below the review's numbered list are also handled: the
 subtree fallback reuses per-resource authorizer construction, subsite
 rejections explain both `RouteOpts` and `MkDispatchSettings`, the normalized
 runner contract is documented, and the changelog links the Yesod PR.
+
+## Fourth review pass
+
+These statuses cover all nine findings at Yesod `158d1422`.
+
+| Finding | Resolution or regression coverage |
+| --- | --- |
+| #1: Delegation warning breaks `-Werror` | Removed the unconditional warning. `YesodDispatch` now compiles with `-Werror` while delegating to named Foo/Static policies and Account's wrapper policy. Both top-level and deeper delegation are exercised. Core's new `RouteAuthSplit` fixture also compiles separate named-policy splices under `-Wall -Werror`, checking allow/deny decisions, captures, event order, and 405s. |
+| #2: Runtime runner-compliance redesign | The previously agreed runner contract is retained. Every subsite on the path must honor `ysreParentRunner`; arbitrary/transitive raw WAI bypasses remain unsupported. No new runtime class method or environment field is introduced. |
+| #3: Bare unresolved mount name | Core adds an explicit unresolved `NameS` control. The downstream hidden `WaiSubsite` fixture already covered this branch, and the existing real `EmbeddedStatic` fixture covers the module-name check mentioned in the review. |
+| #4: Impossible mount focus remedy | The diagnostic, Haddock, and guide now require a parent containing only the mount before focusing its named dispatch. They explicitly state that a mount leaf cannot itself be a focus target. |
+| #5: Qualified names and type variables | Only global TH names bypass lookup failure. Unresolved qualifiers receive import guidance; type variables receive a dedicated unsupported-type diagnostic. Core and downstream rejection controls cover both, and public docs list type variables explicitly. |
+| #6: Duplicated settings fields | `MkDispatchSettings` carries the complete `SiteAuthorization` value. A shared classifier drives subsite rejection and mount validation, and named-policy type checks run only from the latter. |
+| #7: Generic dispatch docs | The settings and `mkDispatchClause` Haddocks explain that the generic generator rejects named mounts; typed `mkDispatchInstance` uses the standard site runner. |
+| #8: Internal Haddocks | The authorization settings, classification helpers, and accessors have descriptions and `@since` tags. The old flat settings fields were replaced by the documented shared field. |
+| #9: Positional mount matrix | Core's matrix labels every type, policy, and generator path, keeping expectations beside each type. Concrete controls cover all four paths; aliases, unresolved names, variables, and families run once per policy through the shared validator. This reduces TH generations from 200 to 90, including the two new cases. |
+
+As a negative control, adding `-Werror` to the downstream root dispatcher with
+the previous Yesod pin (`158d1422`) fails compilation for Account, Foo, and
+Static delegation. Updating to the fixed revision makes the same suite pass.
 
 ## Tests kept in yesod-core
 

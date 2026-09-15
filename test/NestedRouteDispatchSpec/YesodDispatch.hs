@@ -2,7 +2,7 @@
 {-# language OverloadedStrings #-}
 {-# language ViewPatterns #-}
 
-{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans -Werror #-}
 
 -- | Only WholeSiteSpec imports this dispatcher. Fragment specs deliberately
 -- compile without it or their sibling's authorizers.
@@ -23,6 +23,7 @@ import Data.Text (Text)
 
 -- There is no Authorize (Route App) instance. Clearing the shared wrapper
 -- must preserve named authorization and the wrappers of delegated fragments.
+-- Correctly configured delegation must also compile with warnings as errors.
 mkYesodDispatchOpts
     (unsetRouteHandlerWrapper $ routeAuthOpts $ setRouteAuthorization RouteAuthPerResource nestDefaultOpts)
     "App" resources

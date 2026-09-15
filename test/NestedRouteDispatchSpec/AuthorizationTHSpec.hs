@@ -57,6 +57,8 @@ mountFailures = $(do
             ]
         types =
             [ ("WaiSubsite", True)
+            , ("Missing.Subsite", True)
+            , ("sub", True)
             , ("Core.WaiSubsite", True)
             , ("RawSubsite", True)
             , ("(SubsiteAlias WaiSubsite)", True)
