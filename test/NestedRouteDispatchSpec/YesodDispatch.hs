@@ -2,25 +2,43 @@
 {-# language OverloadedStrings #-}
 {-# language ViewPatterns #-}
 
-{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans -Werror #-}
 
--- | This module is not imported by any spec on purpose. It builds the full
--- @YesodDispatch App@ instance (via 'mkYesodDispatchOpts' with
--- 'nestDefaultOpts'), and is kept in the test suite's @other-modules@ purely
--- to verify that the full application dispatch still compiles alongside the
--- nested route-fragment dispatch. Handler specs depend only on the cheap
--- @YesodDispatchNested FooR@ fragment; the real application still wants this
--- full @YesodDispatch@.
+-- | Only WholeSiteSpec imports this dispatcher. Fragment specs deliberately
+-- compile without it or their sibling's authorizers.
 module NestedRouteDispatchSpec.YesodDispatch where
 
-import NestedRouteDispatchSpec.Foo.Handler () -- needed for the yesod dispatch instance in scope
+import NestedRouteDispatchSpec.Foo.Handler (authorizeFooMountR)
 import NestedRouteDispatchSpec.Foo.Route (FooR(..))
+import NestedRouteDispatchSpec.Account.Handler ()
+import NestedRouteDispatchSpec.Account.Route (AccountR(..))
+import NestedRouteDispatchSpec.Static.Handler ()
+import NestedRouteDispatchSpec.Static.Route (StaticR(..))
+import NestedRouteDispatchSpec.Authorization (routeAuthOpts)
+import NestedRouteDispatchSpec.Subsite.Route
 import NestedRouteDispatchSpec.Resources
 import NestedRouteDispatchSpec.YesodData
 import Yesod.Core
 import Data.Text (Text)
 
-mkYesodDispatchOpts nestDefaultOpts "App" resources
+-- There is no Authorize (Route App) instance. Clearing the shared wrapper
+-- must preserve named authorization and the wrappers of delegated fragments.
+-- Correctly configured delegation must also compile with warnings as errors.
+mkYesodDispatchOpts
+    (unsetRouteHandlerWrapper $ routeAuthOpts $ setRouteAuthorization RouteAuthPerResource nestDefaultOpts)
+    "App" resources
+
+authorizeHomeR :: RouteAuthorizer App
+authorizeHomeR = RouteAuthorizer $ \_ -> do
+    recordEvent NamedAuthorizing
+    deny <- lookupHeader "X-Deny-Named"
+    pure $ if deny == Just "yes" then Unauthorized "Root denied" else Authorized
+
+authorizeMountR :: Int -> RouteAuthorizer App
+authorizeMountR = authorizeFooMountR 1
+
+getRootSub :: App -> Int -> AuthSub
+getRootSub _ _ = AuthSub
 
 getHomeR :: HandlerFor App Text
-getHomeR = pure "HomeR"
+getHomeR = recordEvent Handling >> pure "HomeR"
