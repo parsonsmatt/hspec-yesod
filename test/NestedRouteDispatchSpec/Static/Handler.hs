@@ -22,8 +22,8 @@ mkYesodDispatchOpts
     (routeAuthOpts $ setRouteAuthorization RouteAuthPerResource $ nestDefaultOptsFor "StaticR")
     "App" resources
 
-authorizeStaticLeafR :: RouteAuthorizer App
-authorizeStaticLeafR = RouteAuthorizer $ \isWrite -> do
+authorizeStaticLeafR :: Bool -> HandlerFor App AuthResult
+authorizeStaticLeafR isWrite = do
     recordEvent NamedAuthorizing
     permission <- lookupHeader "X-Allow-Write"
     pure $ if not isWrite || permission == Just "yes"

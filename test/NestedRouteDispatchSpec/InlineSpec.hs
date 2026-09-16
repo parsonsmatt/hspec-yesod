@@ -60,14 +60,14 @@ typedWrapper (WithParentArgs () route) handler = do
     deny <- lookupHeader "X-Deny-Wrapper"
     if deny == Just "yes" then notAuthenticated else handler
 
-authorizeRootR, authorizeAnyR :: RouteAuthorizer (InlineApp a)
-authorizeRootR = RouteAuthorizer $ \_ -> do
+authorizeRootR, authorizeAnyR :: Bool -> HandlerFor (InlineApp a) AuthResult
+authorizeRootR _ = do
     record NamedAuthorizing
     deny <- lookupHeader "X-Deny-Named"
     pure $ if deny == Just "yes" then Unauthorized "Named denied" else Authorized
 authorizeAnyR = authorizeRootR
 
-authorizeStaticR :: StaticR -> RouteAuthorizer (InlineApp a)
+authorizeStaticR :: StaticR -> Bool -> HandlerFor (InlineApp a) AuthResult
 authorizeStaticR StaticLeafR = authorizeRootR
 
 getStaticLeafR :: HandlerFor (InlineApp a) Text
@@ -78,8 +78,8 @@ postStaticLeafR = record Handling >> pure (toHtml ("static write" :: Text))
 
 -- Deliberately no authorizeItemR or authorizeFilesR bindings. The old inline
 -- implementation demanded those instead of the enclosing subtree's policy.
-authorizeAccountR :: Int -> Text -> AccountR -> RouteAuthorizer (InlineApp a)
-authorizeAccountR org account fragment = RouteAuthorizer $ \_ -> do
+authorizeAccountR :: Int -> Text -> AccountR -> Bool -> HandlerFor (InlineApp a) AuthResult
+authorizeAccountR org account fragment _ = do
     record NamedAuthorizing
     pure $ case fragment of
         ItemR 2 | org == 1 && account == "alice" -> Authorized

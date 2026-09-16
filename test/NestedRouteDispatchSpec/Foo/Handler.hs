@@ -30,8 +30,8 @@ instance Authorize FooR where
                   && canWrite /= Just "yes" -> Denied "Writes require permission"
             _ -> Allowed "permission granted"
 
-authorizeFooR :: Int -> FooR -> RouteAuthorizer App
-authorizeFooR parent route = RouteAuthorizer $ \_ -> do
+authorizeFooR :: Int -> FooR -> Bool -> HandlerFor App AuthResult
+authorizeFooR parent route _ = do
     recordEvent NamedAuthorizing
     addHeader "X-Named-Route" (Text.pack (show (parent, route)))
     deny <- lookupHeader "X-Deny-Named"
@@ -40,8 +40,8 @@ authorizeFooR parent route = RouteAuthorizer $ \_ -> do
         Just "login" -> AuthenticationRequired
         _ -> Authorized
 
-authorizeFooMountR :: Int -> Int -> RouteAuthorizer App
-authorizeFooMountR parent mount = RouteAuthorizer $ \isWrite -> do
+authorizeFooMountR :: Int -> Int -> Bool -> HandlerFor App AuthResult
+authorizeFooMountR parent mount isWrite = do
     recordEvent NamedAuthorizing
     allowWrite <- lookupHeader "X-Allow-Write"
     login <- lookupHeader "X-Mount-Login"

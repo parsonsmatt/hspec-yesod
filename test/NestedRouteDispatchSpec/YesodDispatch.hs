@@ -28,13 +28,13 @@ mkYesodDispatchOpts
     (unsetRouteHandlerWrapper $ routeAuthOpts $ setRouteAuthorization RouteAuthPerResource nestDefaultOpts)
     "App" resources
 
-authorizeHomeR :: RouteAuthorizer App
-authorizeHomeR = RouteAuthorizer $ \_ -> do
+authorizeHomeR :: Bool -> HandlerFor App AuthResult
+authorizeHomeR _ = do
     recordEvent NamedAuthorizing
     deny <- lookupHeader "X-Deny-Named"
     pure $ if deny == Just "yes" then Unauthorized "Root denied" else Authorized
 
-authorizeMountR :: Int -> RouteAuthorizer App
+authorizeMountR :: Int -> Bool -> HandlerFor App AuthResult
 authorizeMountR = authorizeFooMountR 1
 
 getRootSub :: App -> Int -> AuthSub
