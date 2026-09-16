@@ -8,17 +8,72 @@ module NestedRouteDispatchSpec.Foo.Handler where
 
 import NestedRouteDispatchSpec.Foo.Route
 import NestedRouteDispatchSpec.Resources
+import NestedRouteDispatchSpec.Authorization
+import NestedRouteDispatchSpec.Subsite.Route
+import NestedRouteDispatchSpec.Subsite.Handler ()
 import qualified Data.Text as Text
 import Data.Text (Text)
-import Yesod.Core
+import qualified Network.Wai as W
+import Yesod.Core hiding (isAuthorized)
 
-mkYesodDispatchOpts (nestDefaultOptsFor "FooR") "App" resources
+instance Authorize FooR where
+    isAuthorized (WithParentArgs parent route) = do
+        recordEvent Authorizing
+        method <- W.requestMethod <$> waiRequest
+        canWrite <- lookupHeader "X-Allow-Write"
+        pure $ case route of
+            _ | parent /= 1 -> Denied "Wrong parent"
+            FooLoginRequiredR -> LoginRequired
+            FooShowR item | item /= 2 -> Denied "Wrong item"
+            FooFilesR pieces | pieces /= ["one", "two"] -> Denied "Wrong files"
+            _ | method `notElem` ["GET", "HEAD", "OPTIONS", "TRACE"]
+                  && canWrite /= Just "yes" -> Denied "Writes require permission"
+            _ -> Allowed "permission granted"
+
+authorizeFooR :: Int -> FooR -> Bool -> HandlerFor App AuthResult
+authorizeFooR parent route _ = do
+    recordEvent NamedAuthorizing
+    addHeader "X-Named-Route" (Text.pack (show (parent, route)))
+    deny <- lookupHeader "X-Deny-Named"
+    pure $ case deny of
+        Just "yes" -> Unauthorized "Named denied"
+        Just "login" -> AuthenticationRequired
+        _ -> Authorized
+
+authorizeFooMountR :: Int -> Int -> Bool -> HandlerFor App AuthResult
+authorizeFooMountR parent mount isWrite = do
+    recordEvent NamedAuthorizing
+    allowWrite <- lookupHeader "X-Allow-Write"
+    login <- lookupHeader "X-Mount-Login"
+    pure $ if login == Just "yes" then AuthenticationRequired
+        else if parent == 1 && mount == 2 && (not isWrite || allowWrite == Just "yes")
+            then Authorized else Unauthorized "Mount denied"
+
+getFooSub :: App -> Int -> Int -> AuthSub
+getFooSub _ _ _ = AuthSub
+
+mkYesodDispatchOpts
+    (routeAuthOpts $ setRouteAuthorization RouteAuthSubtree $ nestDefaultOptsFor "FooR")
+    "App"
+    resources
 
 getFooIndexR :: Int -> HandlerFor App Text
-getFooIndexR i = pure $ "getFooIndexR: " <> Text.pack (show i)
+getFooIndexR i = recordEvent Handling >> pure ("getFooIndexR: " <> Text.pack (show i))
+
+postFooIndexR :: Int -> HandlerFor App Html
+postFooIndexR i = recordEvent Handling >> pure (toHtml ("postFooIndexR: " <> Text.pack (show i)))
 
 getFooEditR :: Int -> HandlerFor App Text
-getFooEditR i = pure $ "getFooEditR: " <> Text.pack (show i)
+getFooEditR i = recordEvent Handling >> pure ("getFooEditR: " <> Text.pack (show i))
 
 getFooShowR :: Int -> Int -> HandlerFor App Text
-getFooShowR i j = pure $ "getFooShowR: " <> Text.pack (show (i, j))
+getFooShowR i j = recordEvent Handling >> pure ("getFooShowR: " <> Text.pack (show (i, j)))
+
+getFooFilesR :: Int -> [Text] -> HandlerFor App Text
+getFooFilesR _ pieces = recordEvent Handling >> pure (Text.intercalate "/" pieces)
+
+getFooLoginRequiredR :: Int -> HandlerFor App Text
+getFooLoginRequiredR _ = recordEvent Handling >> pure "private"
+
+getFooErrorR :: Int -> HandlerFor App Text
+getFooErrorR _ = recordEvent Handling >> invalidArgs ["Handler failed"]
