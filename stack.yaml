@@ -9,6 +9,6 @@ allow-newer: true
 extra-deps:
   # Validate https://github.com/yesodweb/yesod/pull/1933 with the existing suite.
   - git: https://github.com/yesodweb/yesod.git
-    commit: 4aab97c36bc56aa3879e7dad9077be1ec7dd6ba9
+    commit: 1825fa779595c54ea6948e8d999360f920386039
     subdir: yesod-core
   - encoding-0.10.2

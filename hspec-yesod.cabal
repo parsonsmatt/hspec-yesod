@@ -55,6 +55,7 @@ test-suite test
     other-modules:
        NestedRouteDispatchSpec
        ParameterizedLeafSpec
+       MountLeafSpec
        NestedRouteDispatchSpec.Resources
        NestedRouteDispatchSpec.Foo.Route
        NestedRouteDispatchSpec.Foo.Handler

@@ -11,5 +11,5 @@ constraints: megaparsec < 9.8
 source-repository-package
     type: git
     location: https://github.com/yesodweb/yesod.git
-    tag: 4aab97c36bc56aa3879e7dad9077be1ec7dd6ba9
+    tag: 1825fa779595c54ea6948e8d999360f920386039
     subdir: yesod-core
