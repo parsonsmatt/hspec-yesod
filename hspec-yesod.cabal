@@ -54,6 +54,7 @@ test-suite test
     main-is: main.hs
     other-modules:
        NestedRouteDispatchSpec
+       ParameterizedLeafSpec
        NestedRouteDispatchSpec.Resources
        NestedRouteDispatchSpec.Foo.Route
        NestedRouteDispatchSpec.Foo.Handler
