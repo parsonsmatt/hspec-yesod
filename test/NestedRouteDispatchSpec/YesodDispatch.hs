@@ -1,3 +1,8 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# language TemplateHaskell #-}
 {-# language OverloadedStrings #-}
 {-# language ViewPatterns #-}
@@ -24,3 +29,13 @@ mkYesodDispatchOpts nestDefaultOpts "App" resources
 
 getHomeR :: HandlerFor App Text
 getHomeR = pure "HomeR"
+
+-- The production assembly supplies policies that isolated Foo specs do not import.
+instance AuthorizeRoute (Route App) where
+    authorizeRoute () LeafHomeR = pure ()
+
+instance AuthorizeRoute UnrelatedR where
+    authorizeRoute () LeafUnrelatedHomeR = permissionDenied "unrelated denied"
+
+getUnrelatedHomeR :: HandlerFor App Text
+getUnrelatedHomeR = pure "unrelated"

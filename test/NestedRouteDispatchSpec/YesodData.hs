@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# language TemplateHaskell #-}
 {-# language ViewPatterns #-}
 {-# language TypeFamilies #-}

@@ -7,5 +7,8 @@ packages:
 allow-newer: true
 
 extra-deps:
-  - yesod-core-1.7.0.0
+  # Validate https://github.com/yesodweb/yesod/pull/1933 with the existing suite.
+  - git: https://github.com/yesodweb/yesod.git
+    commit: 4aab97c36bc56aa3879e7dad9077be1ec7dd6ba9
+    subdir: yesod-core
   - encoding-0.10.2
