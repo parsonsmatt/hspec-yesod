@@ -6,3 +6,10 @@ packages: .
 -- yesod-form. Pin below it so CI (and local builds) pick the last good 9.7.x.
 -- Track for removal when megaparsec >= 9.8.1 (or a fixed 9.8.0 revision) ships.
 constraints: megaparsec < 9.8
+
+-- Validate the dispatch/leaf prototype without changing the hspec-yesod library.
+source-repository-package
+    type: git
+    location: https://github.com/yesodweb/yesod.git
+    tag: dbda0ce4f62b4278f899b0ad3da2f39c1b6786a7
+    subdir: yesod-core

@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# language QuasiQuotes #-}
 
 module NestedRouteDispatchSpec.Resources where
@@ -17,6 +19,9 @@ resources = [parseRoutesNoCheck|
     /edit   FooEditR    GET
     /#Int   FooShowR    GET
 
+/unrelated UnrelatedR:
+    / UnrelatedHomeR GET
+
 |]
 
 nestDefaultOptsFor :: String -> RouteOpts
@@ -25,4 +30,9 @@ nestDefaultOptsFor target =
 
 nestDefaultOpts :: RouteOpts
 nestDefaultOpts =
-    setNestedRouteFallthrough True defaultOpts
+    setRouteDispatchWrapper [t| AuthorizeRoute |]
+        (\handler route -> [| let WithParentArgs args fragment = $route in authorizeRoute args fragment >> $handler |]) $
+        setNestedRouteFallthrough True defaultOpts
+
+class AuthorizeRoute route where
+    authorizeRoute :: ParentArgs route -> route -> HandlerFor (ParentSite route) ()

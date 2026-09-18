@@ -18,6 +18,8 @@ module Main
     , Widget
     ) where
 
+import qualified ParameterizedLeafSpec
+import qualified MountLeafSpec
 import Test.HUnit hiding (Test)
 import Test.Hspec
 import qualified Test.Hspec as Hspec
@@ -69,6 +71,8 @@ mkYesod "RoutedApp" [parseRoutes|
 
 main :: IO ()
 main = hspec $ do
+    ParameterizedLeafSpec.spec
+    MountLeafSpec.spec
     describe "NestedRouteDispatchSpec.Foo.HandlerSpec" NestedRouteDispatchSpec.Foo.HandlerSpec.spec
     describe "CSS selector parsing" $ do
         it "elements" $ parseQuery_ "strong" @?= [[DeepChildren [ByTagName "strong"]]]
