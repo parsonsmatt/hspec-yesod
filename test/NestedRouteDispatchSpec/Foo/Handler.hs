@@ -19,9 +19,9 @@ import Yesod.Core
 -- No root or unrelated authorization instances are imported here.
 instance AuthorizeRoute FooR where
     authorizeRoute parent leaf = case leaf of
-        LeafFooIndexR -> check parent
-        LeafFooEditR -> permissionDenied "edit denied"
-        LeafFooShowR child -> check parent >> check child
+        FooIndexR -> check parent
+        FooEditR -> permissionDenied "edit denied"
+        FooShowR child -> check parent >> check child
       where
         check value = if value > 0 then pure () else permissionDenied "capture denied"
 

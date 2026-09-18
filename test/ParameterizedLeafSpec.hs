@@ -29,7 +29,7 @@ instance Yesod (ParamApp a) where
     messageLoggerSource = mempty
 
 instance AuthorizeRoute (TeamR a) where
-    authorizeRoute (org, team) (LeafItemR item)
+    authorizeRoute (org, team) (ItemR item)
         | org == 1 && team == 2 && item == 3 = pure ()
         | otherwise = permissionDenied "wrong capture"
 

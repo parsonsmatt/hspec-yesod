@@ -5,7 +5,6 @@
 module NestedRouteDispatchSpec.Resources where
 
 import Yesod.Core
-import Yesod.Core.RouteLeaf
 import Yesod.Routes.TH.Types
 
 data App = App
@@ -31,9 +30,9 @@ nestDefaultOptsFor target =
 
 nestDefaultOpts :: RouteOpts
 nestDefaultOpts =
-    setRouteLeafHandlerWrapper [t| AuthorizeRoute |]
-        (\handler args leaf -> [| authorizeRoute $args $leaf >> $handler |]) $
+    setRouteDispatchWrapper [t| AuthorizeRoute |]
+        (\handler route -> [| let WithParentArgs args fragment = $route in authorizeRoute args fragment >> $handler |]) $
         setNestedRouteFallthrough True defaultOpts
 
-class HasRouteLeaves route => AuthorizeRoute route where
-    authorizeRoute :: ParentArgs route -> RouteLeaves route -> HandlerFor (ParentSite route) ()
+class AuthorizeRoute route where
+    authorizeRoute :: ParentArgs route -> route -> HandlerFor (ParentSite route) ()

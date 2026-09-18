@@ -42,14 +42,13 @@ getSub _ _ _ = Sub
 
 -- GroupR owns the mount, so no AuthorizeRoute (Route App) instance is needed.
 instance AuthorizeRoute GroupR where
-    authorizeRoute parent (LeafMountR capture selected)
+    authorizeRoute parent (MountR capture selected)
         | parent /= 1 || capture /= 2 = permissionDenied "mount denied"
         | otherwise = case selected of
-            Just PageR -> setSession "mount-policy" "authorized"
-            Nothing -> setSession "mount-policy" "checked miss"
+            PageR -> setSession "mount-policy" "authorized"
 
 spec :: Spec
-spec = describe "mount leaf authorization with ordinary requests" $
+spec = describe "matched mount authorization with ordinary requests" $
     before (pure $ siteToYesodExampleData App) $ do
         it "supplies a mount policy through focused dispatch" $ do
             request $ setUrlNested 1 (MountR 2 PageR)
@@ -69,8 +68,8 @@ spec = describe "mount leaf authorization with ordinary requests" $
                 setUrlNested 1 (MountR 2 PageR)
                 setMethod "POST"
             statusIs 405
-        it "runs the mount policy on misses and lets it preserve a 404" $ do
+        it "preserves unauthenticated 404s for subsite misses" $ do
             request $ setUrl ("/group/1/mount/2/missing" :: Text)
             statusIs 404
             request $ setUrl ("/group/0/mount/2/missing" :: Text)
-            statusIs 403
+            statusIs 404
